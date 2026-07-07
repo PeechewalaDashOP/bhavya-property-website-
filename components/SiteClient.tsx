@@ -153,6 +153,8 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
     setOtpAttempts(0); setResendCooldown(0);
     clearInterval(resendTimerRef.current);
   }
+  // OTP temporarily disabled — submits directly until WhatsApp Business API is approved.
+  // To revert: restore this function to call /api/otp/send and setGatewayStep("otp").
   async function sendOtp() {
     if (!leadCtx || submitting) return;
     if (ldName.trim().length < 2) return showToast("Please enter your name");
@@ -160,24 +162,36 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
     if (phone.length !== 10) return showToast("Enter a valid 10-digit phone number");
     setSubmitting(true);
     try {
-      const res = await fetch("/api/otp/send", {
+      const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({
+          name: ldName.trim(),
+          phone,
+          propId: leadCtx.propId ?? null,
+          dealerId: leadCtx.dealerId ?? null,
+          moveInDate: ldMoveIn || null,
+          occupants: parseInt(ldOccupants) || 1,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send OTP");
-      setGatewayStep("otp");
-      setOtpError("");
-      setOtpAttempts(0);
-      setResendCooldown(60);
-      clearInterval(resendTimerRef.current);
-      resendTimerRef.current = setInterval(() => {
-        setResendCooldown((n) => {
-          if (n <= 1) { clearInterval(resendTimerRef.current); return 0; }
-          return n - 1;
-        });
-      }, 1000);
+      if (!res.ok) throw new Error(data.error || "Something went wrong");
+      const ref: string = data.ref;
+      const dealerPhone: string | null = data.dealerPhone ?? null;
+      if (leadCtx.propId != null) {
+        const next = new Set(unlock); next.add(leadCtx.propId);
+        setUnlock(next); persistUnlock(next);
+        setUnlockRef((m) => ({ ...m, [leadCtx.propId as number]: ref }));
+        if (dealerPhone) setRevealPhones((m) => ({ ...m, [leadCtx.propId as number]: dealerPhone }));
+      }
+      const wasDealer = leadCtx.kind === "dealer";
+      const dealerCtx = leadCtx;
+      setLeadCtx(null); setGatewayStep("form");
+      showToast("Contact unlocked ✓ Ref " + ref);
+      if (wasDealer) {
+        setModalProp(null);
+        setDealerReveal({ ref, name: dealerCtx.dealerName || "", phone: dealerPhone || "" });
+      }
     } catch (err) {
       showToast((err as Error).message);
     } finally {
@@ -653,8 +667,8 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
               <>
                 <p style={{ color: "var(--muted)", fontSize: 14, margin: "6px 0 14px" }}>
                   {leadCtx.kind === "dealer"
-                    ? <>We&apos;ll send an OTP to verify and connect you with <b>{leadCtx.dealerName}</b>.</>
-                    : <>Verify your phone to unlock the contact for <b>{leadCtx.title}</b>.</>}
+                    ? <>Share your details to connect with <b>{leadCtx.dealerName}</b>.</>
+                    : <>Share your details to unlock the contact for <b>{leadCtx.title}</b>.</>}
                 </p>
                 <input placeholder="Your name *" value={ldName} onChange={(e) => setLdName(e.target.value)} />
                 <input placeholder="Phone number *" inputMode="numeric" value={ldPhone} onChange={(e) => setLdPhone(e.target.value)} />
@@ -668,9 +682,9 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                   </select>
                 </div>
                 <button className="btn" onClick={sendOtp} disabled={submitting}>
-                  {submitting ? "Sending OTP…" : "Send OTP →"}
+                  {submitting ? "Saving…" : "Get contact details →"}
                 </button>
-                <p className="refnote">🔒 OTP verifies your number — no spam, no brokerage fee.</p>
+                <p className="refnote">🔒 Your details are shared only with this dealer — no spam, no brokerage fee.</p>
               </>
             ) : (
               <>

@@ -142,22 +142,36 @@ function LeadSheet({
     }, 1000);
   }
 
+  // OTP temporarily disabled — submits directly until WhatsApp Business API is approved.
+  // To revert: restore this function to call /api/otp/send and setPhase("otp").
   async function submitForm() {
     const cleanPhone = phone.replace(/\D/g, "");
     if (name.trim().length < 2) { setError("Enter your name (at least 2 characters)"); return; }
     if (cleanPhone.length !== 10) { setError("Enter a valid 10-digit phone number"); return; }
     setLoading(true);
     setError("");
-    const res = await fetch("/api/otp/send", {
+    const res = await fetch("/api/leads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: cleanPhone }),
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: cleanPhone,
+        propId: property.id,
+        dealerId: property.dealers?.id ?? null,
+        unitId: selectedUnit?.id ?? null,
+        unitLabel: selectedUnit?.label ?? null,
+        moveInDate: moveIn || null,
+        occupants,
+        intent: "contact",
+        msg: msg.trim() || null,
+      }),
     });
     const data = await res.json();
     setLoading(false);
-    if (!res.ok) { setError(data.error ?? "Failed to send OTP. Please try again."); return; }
-    setPhase("otp");
-    startCooldown();
+    if (!res.ok) { setError(data.error ?? "Failed to save. Please try again."); return; }
+    setDealerPhone(data.dealerPhone ?? "");
+    setRef(data.ref ?? "");
+    setPhase("done");
   }
 
   async function submitOtp() {
@@ -302,11 +316,11 @@ function LeadSheet({
                 onClick={submitForm}
                 disabled={loading}
               >
-                {loading ? "Sending OTP…" : "Send OTP & Continue →"}
+                {loading ? "Saving…" : "Get Contact Details →"}
               </button>
 
               <p style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
-                A one-time password will be sent to your phone for verification.
+                Your details are shared only with this dealer — no spam, no brokerage fee.
               </p>
             </>
           )}
