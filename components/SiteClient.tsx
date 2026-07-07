@@ -1,22 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Area, Dealer, Lead, Property } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { Area, PublicDealer, Property } from "@/lib/types";
 import { fmt } from "@/lib/format";
-import { saveLead } from "@/lib/getData";
 
-type Props = { properties: Property[]; dealers: Dealer[]; areas: Area[] };
+type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[] };
 type Tab = "sale" | "rent" | "PG" | "Plot" | "Shop";
-type GateCtx = { kind?: "dealer"; propId?: number; title: string; dealerName?: string; dealerPhone?: string; price?: number };
+type GateCtx = { kind?: "dealer"; propId?: number; dealerId?: number; title: string; dealerName?: string; price?: number };
 type ChatMsg =
   | { who: "bot" | "me"; text: string }
-  | { who: "bot"; dealers: Dealer[] }
+  | { who: "bot"; dealers: PublicDealer[] }
   | { who: "bot"; cards: Property[] };
 
-const STATUSES = ["New", "Dealer contacted", "Visit done", "Deal closed – Won", "Closed – Lost"];
 const COACH_AREA_IMG = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80";
 
 export default function SiteClient({ properties, dealers, areas }: Props) {
+  const router = useRouter();
   /* ---------------- state ---------------- */
   const [mobOpen, setMobOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("sale");
@@ -45,12 +45,22 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
   // gateway data
   const [unlock, setUnlock] = useState<Set<number>>(new Set());
   const [unlockRef, setUnlockRef] = useState<Record<number, string>>({});
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
-  // lead form fields
+  // lead gateway — step 1 fields
   const [ldName, setLdName] = useState("");
   const [ldPhone, setLdPhone] = useState("");
-  const [ldIntent, setLdIntent] = useState("I want to Buy");
+  const [ldMoveIn, setLdMoveIn] = useState("");
+  const [ldOccupants, setLdOccupants] = useState("1");
+  // lead gateway — step 2 OTP
+  const [gatewayStep, setGatewayStep] = useState<"form" | "otp">("form");
+  const [ldOtp, setLdOtp] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  // post-OTP reveal: propId → dealer phone (session only — never persisted)
+  const [revealPhones, setRevealPhones] = useState<Record<number, string>>({});
+  const resendTimerRef = useRef<ReturnType<typeof setInterval>>();
 
   // footer enquiry fields
   const [fName, setFName] = useState("");
@@ -63,8 +73,10 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [qreplies, setQreplies] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const chatStarted = useRef(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  const chatHistory = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
 
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -73,7 +85,6 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
   useEffect(() => {
     try {
       setUnlock(new Set(JSON.parse(localStorage.getItem("kp_unlock") || "[]")));
-      setLeads(JSON.parse(localStorage.getItem("kp_leads") || "[]"));
     } catch {}
   }, []);
   useEffect(() => setShown(6), [tab, appliedLoc, appliedType, appliedBud, fBhk, fFurn, fSort, cVer, cCoach]);
@@ -96,10 +107,6 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
       ? [["", "Budget"], ["8000", "Under ₹8k"], ["12000", "Under ₹12k"], ["18000", "Under ₹18k"], ["25000", "Under ₹25k"], ["40000", "Under ₹40k"]]
       : [["", "Budget"], ["2000000", "Under ₹20 L"], ["3500000", "Under ₹35 L"], ["5000000", "Under ₹50 L"], ["7500000", "Under ₹75 L"], ["10000000", "Under ₹1 Cr"]];
   }
-  function newRef() {
-    return "KP-" + new Date().getFullYear() + "-" + String(leads.length + 1).padStart(4, "0");
-  }
-
   /* ---------------- list ---------------- */
   const list = useMemo(() => {
     let l = properties.slice();
@@ -139,64 +146,114 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
   function persistUnlock(next: Set<number>) {
     try { localStorage.setItem("kp_unlock", JSON.stringify([...next])); } catch {}
   }
-  function persistLeads(next: Lead[]) {
-    try { localStorage.setItem("kp_leads", JSON.stringify(next)); } catch {}
-  }
   function openLead(ctx2: GateCtx) {
     setLeadCtx(ctx2);
-    setLdName("");
-    setLdPhone("");
-    setLdIntent("I want to Buy");
+    setLdName(""); setLdPhone(""); setLdMoveIn(""); setLdOccupants("1");
+    setGatewayStep("form"); setLdOtp(""); setOtpError("");
+    setOtpAttempts(0); setResendCooldown(0);
+    clearInterval(resendTimerRef.current);
   }
-  function submitLead() {
-    if (!leadCtx) return;
-    const name = ldName.trim();
+  async function sendOtp() {
+    if (!leadCtx || submitting) return;
+    if (ldName.trim().length < 2) return showToast("Please enter your name");
     const phone = ldPhone.replace(/\D/g, "");
-    if (name.length < 2) return showToast("Please enter your name");
-    if (phone.length < 10) return showToast("Enter a valid 10-digit phone");
-    const ref = newRef();
-    const lead: Lead = {
-      ref, date: new Date().toISOString().slice(0, 10), name, phone, intent: ldIntent,
-      prop: leadCtx.title || "(dealer enquiry)", dealer: leadCtx.dealerName || "—",
-      price: leadCtx.price || 0, status: "New"
-    };
-    const nextLeads = [...leads, lead];
-    setLeads(nextLeads); persistLeads(nextLeads);
-    saveLead({ ref, name, phone, intent: ldIntent, prop: lead.prop, dealer: lead.dealer, price: lead.price });
-    if (leadCtx.propId != null) {
-      const next = new Set(unlock); next.add(leadCtx.propId);
-      setUnlock(next); persistUnlock(next);
-      setUnlockRef((m) => ({ ...m, [leadCtx.propId as number]: ref }));
+    if (phone.length !== 10) return showToast("Enter a valid 10-digit phone number");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send OTP");
+      setGatewayStep("otp");
+      setOtpError("");
+      setOtpAttempts(0);
+      setResendCooldown(60);
+      clearInterval(resendTimerRef.current);
+      resendTimerRef.current = setInterval(() => {
+        setResendCooldown((n) => {
+          if (n <= 1) { clearInterval(resendTimerRef.current); return 0; }
+          return n - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      showToast((err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    const wasDealer = leadCtx.kind === "dealer";
-    const dealerCtx = leadCtx;
-    setLeadCtx(null);
-    showToast("Contact unlocked ✓ Ref " + ref);
-    if (wasDealer) {
-      // open a small success modal reusing the property modal slot
-      setModalProp(null);
-      setDealerReveal({ ref, name: dealerCtx.dealerName || "", phone: dealerCtx.dealerPhone || "" });
+  }
+  async function submitLead() {
+    if (!leadCtx || submitting) return;
+    const otp = ldOtp.replace(/\D/g, "");
+    if (otp.length !== 6) { setOtpError("Enter the 6-digit OTP"); return; }
+    setOtpError("");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: ldPhone.replace(/\D/g, ""),
+          token: otp,
+          name: ldName.trim(),
+          propId: leadCtx.propId ?? null,
+          dealerId: leadCtx.dealerId ?? null,
+          moveInDate: ldMoveIn || null,
+          occupants: parseInt(ldOccupants) || 1,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOtpAttempts((n) => n + 1);
+        setOtpError(data.error || "Invalid OTP. Please try again.");
+        return;
+      }
+      const ref: string = data.ref;
+      const dealerPhone: string | null = data.dealerPhone ?? null;
+      if (leadCtx.propId != null) {
+        const next = new Set(unlock); next.add(leadCtx.propId);
+        setUnlock(next); persistUnlock(next);
+        setUnlockRef((m) => ({ ...m, [leadCtx.propId as number]: ref }));
+        if (dealerPhone) setRevealPhones((m) => ({ ...m, [leadCtx.propId as number]: dealerPhone }));
+      }
+      const wasDealer = leadCtx.kind === "dealer";
+      const dealerCtx = leadCtx;
+      setLeadCtx(null); setGatewayStep("form");
+      showToast("Contact unlocked ✓ Ref " + ref);
+      if (wasDealer) {
+        setModalProp(null);
+        setDealerReveal({ ref, name: dealerCtx.dealerName || "", phone: dealerPhone || "" });
+      }
+    } catch (err) {
+      setOtpError((err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
   }
   const [dealerReveal, setDealerReveal] = useState<{ ref: string; name: string; phone: string } | null>(null);
-  function dealerLead(name: string, phone: string) {
-    openLead({ kind: "dealer", dealerName: name, dealerPhone: phone, title: "(dealer enquiry)" });
+  function dealerLead(name: string, id?: number) {
+    openLead({ kind: "dealer", dealerName: name, dealerId: id, title: "(dealer enquiry)" });
   }
 
-  function footerEnquiry(e: React.FormEvent) {
+  async function footerEnquiry(e: React.FormEvent) {
     e.preventDefault();
     const name = fName.trim(); const phone = fPhone.replace(/\D/g, "");
     if (name.length < 2 || phone.length < 10) return showToast("Please enter name and a valid phone");
-    const ref = newRef();
-    const lead: Lead = { ref, date: new Date().toISOString().slice(0, 10), name, phone, intent: fIntent, prop: "General enquiry", dealer: "—", price: 0, status: "New", msg: fMsg };
-    const next = [...leads, lead]; setLeads(next); persistLeads(next);
-    saveLead({ ref, name, phone, intent: fIntent, prop: "General enquiry", dealer: "—", price: 0, msg: fMsg });
-    setFName(""); setFPhone(""); setFIntent("I want to Buy"); setFMsg("");
-    showToast("Thanks! Ref " + ref + " — we will call you back ✓");
-  }
-  function setStatus(i: number, v: string) {
-    const next = leads.map((l, idx) => (idx === i ? { ...l, status: v } : l));
-    setLeads(next); persistLeads(next);
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone, intent: fIntent, prop: "General enquiry", dealer: "—", price: 0, msg: fMsg }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong");
+      setFName(""); setFPhone(""); setFIntent("I want to Buy"); setFMsg("");
+      showToast("Thanks! Ref " + data.ref + " — we will call you back ✓");
+    } catch (err) {
+      showToast((err as Error).message);
+    }
   }
 
   /* ---------------- chatbot ---------------- */
@@ -204,67 +261,91 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
     const open = !chatOpen; setChatOpen(open);
     if (open && !chatStarted.current) {
       chatStarted.current = true;
-      setMsgs([{ who: "bot", text: "Hi! 👋 I'm your Kota property assistant. Tell me what you're looking for and I'll find it." }]);
+      chatHistory.current = [];
+      setMsgs([{ who: "bot", text: "Hi! 👋 I'm your Kota property assistant. Tell me what you're looking for and I'll find it.\n\nआप हिंदी में भी पूछ सकते हैं! 😊" }]);
       setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a dealer"]);
     }
   }
   function pushMsg(m: ChatMsg) { setMsgs((prev) => [...prev, m]); }
+
   function handleChat(text: string) {
-    if (!text) return;
+    if (!text || chatLoading) return;
     pushMsg({ who: "me", text });
     setQreplies([]);
-    setTimeout(() => reply(text), 350);
-  }
-  function reply(text: string) {
-    const t = text.toLowerCase();
-    if (/start over/.test(t)) {
+
+    if (/^(start over|reset|शुरू करें|restart)/i.test(text)) {
+      chatHistory.current = [];
       setMsgs([{ who: "bot", text: "Let's start again 🙂 What are you looking for?" }]);
       setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a dealer"]);
       return;
     }
-    if (/dealer|agent|contact|call/.test(t)) {
-      pushMsg({ who: "bot", text: "Sure! Share your details once and we'll connect you directly with a verified dealer:" });
-      pushMsg({ who: "bot", dealers: dealers.slice(0, 3) });
-      setQreplies(["🏠 Show homes to buy", "🔑 Show rentals"]);
-      return;
-    }
-    const type = /rent|kiraya|lease/.test(t) ? "rent" : /buy|sale|kharid/.test(t) ? "sale" : null;
-    const area = areas.find((a) => t.includes(a.name.toLowerCase().split(" ")[0]));
-    const bhkM = t.match(/(\d)\s*bhk/);
-    const bhk = bhkM ? +bhkM[1] : null;
-    const coaching = /coaching|allen|resonance|motion|study/.test(t);
-    let l = properties.slice();
-    if (type) l = l.filter((p) => p.type === type);
-    if (area) l = l.filter((p) => p.loc === area.name);
-    if (bhk) l = l.filter((p) => (bhk >= 4 ? p.bhk >= 4 : p.bhk === bhk));
-    if (coaching) l = l.filter((p) => p.coaching);
-    if (!type && !area && !bhk && !coaching && !/home|flat|house|villa|plot|pg|property|ghar/.test(t)) {
-      pushMsg({ who: "bot", text: "I can help you find homes to buy or rent in Kota. Try: <i>“2 BHK in Talwandi”</i> or tap an option below 👇" });
-      setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a dealer"]);
-      return;
-    }
-    if (!l.length) {
-      pushMsg({ who: "bot", text: "I couldn't find an exact match 😅 — here are some popular homes instead:" });
-      l = properties.filter((p) => p.verified).slice(0, 3);
-    } else {
-      pushMsg({ who: "bot", text: `Found <b>${l.length}</b> ${type === "rent" ? "rentals" : type === "sale" ? "homes for sale" : "homes"}${area ? " in " + area.name : ""}${bhk ? " (" + bhk + " BHK)" : ""}. Here are my top picks:` });
-    }
-    pushMsg({ who: "bot", cards: l.slice(0, 3) });
-    setQreplies(["Show more options", "📞 Talk to a dealer", "🔁 Start over"]);
+
+    // Add user message to history
+    chatHistory.current = [...chatHistory.current, { role: "user", content: text }];
+    setChatLoading(true);
+
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: chatHistory.current }),
+    })
+      .then((r) => r.json())
+      .then((data: { text?: string; showCards?: boolean; filter?: { type?: string; loc?: string; bhk?: number; ptype?: string; coaching?: boolean }; quickReplies?: string[] }) => {
+        const botText = data.text ?? "Sorry, I couldn't understand that. Please try again.";
+
+        // Add assistant response to history
+        chatHistory.current = [...chatHistory.current, { role: "assistant", content: botText }];
+
+        // Show text bubble
+        pushMsg({ who: "bot", text: botText });
+
+        // Optionally show property cards based on filter
+        if (data.showCards) {
+          let l = properties.slice();
+          const f = data.filter ?? {};
+          if (f.type === "rent" || f.type === "sale") l = l.filter((p) => p.type === f.type);
+          if (f.loc) {
+            const locLower = f.loc.toLowerCase();
+            l = l.filter((p) => p.loc.toLowerCase().includes(locLower));
+          }
+          if (f.bhk) {
+            const b = f.bhk;
+            l = l.filter((p) => (b >= 4 ? p.bhk >= 4 : p.bhk === b));
+          }
+          if (f.ptype) {
+            const pt = f.ptype.toLowerCase();
+            l = l.filter((p) => p.ptype?.toLowerCase() === pt || p.ptype?.toLowerCase().includes(pt));
+          }
+          if (f.coaching) l = l.filter((p) => p.coaching);
+
+          if (!l.length) l = properties.filter((p) => p.verified).slice(0, 3);
+          pushMsg({ who: "bot", cards: l.slice(0, 3) });
+        }
+
+        // Set quick replies
+        if (data.quickReplies?.length) {
+          setQreplies(data.quickReplies);
+        } else {
+          setQreplies(["Show more options", "📞 Talk to a dealer", "🔁 Start over"]);
+        }
+      })
+      .catch(() => {
+        pushMsg({ who: "bot", text: "Something went wrong. Please try again." });
+        setQreplies(["🔁 Start over"]);
+      })
+      .finally(() => setChatLoading(false));
   }
 
   /* ---------------- derived display ---------------- */
   const areaCount = (name: string) => properties.filter((p) => p.loc === name).length;
   const dealerCount = (name: string) => properties.filter((p) => p.dealer.name === name).length;
-  const wonLeads = leads.filter((l) => l.status === "Deal closed – Won");
-  const wonValue = wonLeads.reduce((s, l) => s + (l.price || 0), 0);
 
   /* ===================================================================== */
   return (
     <>
       {/* HEADER */}
       <header className="hd"><div className="wrap in">
-        <div className="logo">Kota<b>Property</b></div>
+        <div className="logo">Prop<b>100</b></div>
         <nav>
           <a href="#listings" onClick={() => setTab("sale")}>Buy</a>
           <a href="#listings" onClick={() => setTab("rent")}>Rent</a>
@@ -354,12 +435,15 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
           </select></div>
           <button className={"fchip" + (cVer ? " on" : "")} onClick={() => setCVer((v) => !v)}>✓ Verified</button>
           <button className={"fchip" + (cCoach ? " on" : "")} onClick={() => setCCoach((v) => !v)}>🎓 Near coaching</button>
+          <a href="/nearby" className="fchip" style={{ textDecoration: "none" }}>📍 Near me</a>
         </div></div>
         <div className="rcount"><span>{ctx}</span> <b>{list.length}</b> properties</div>
         <div className="list">
-          {list.slice(0, shown).map((p) => (
+          {list.slice(0, shown).map((p) => {
+            const goDetail = p.slug ? () => router.push(`/property/${p.slug}`) : () => setModalProp(p);
+            return (
             <div className="card" key={p.id}>
-              <div className="ph" onClick={() => setModalProp(p)}>
+              <div className="ph" onClick={goDetail} style={p.slug ? { cursor: "pointer" } : undefined}>
                 <img src={p.img} loading="lazy" alt={p.title} />
                 <span className="tag">{p.type === "sale" ? "For Sale" : "For Rent"}</span>
                 {p.verified && <span className="ver">✓ Verified</span>}
@@ -367,17 +451,18 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
               </div>
               <div className="b">
                 <div className="price">{fmt(p.price)}{p.type === "rent" && <small> /month</small>}</div>
-                <div className="tt" onClick={() => setModalProp(p)}>{p.title}</div>
+                <div className="tt" onClick={goDetail}>{p.title}</div>
                 <div className="lc">📍 {p.loc}, Kota{p.coaching ? " · 🎓 " + p.coaching : ""}</div>
                 <div className="sp">
                   {p.bhk ? <span><b>{p.bhk}</b> BHK</span> : null}
                   {p.baths ? <span><b>{p.baths}</b> Bath</span> : null}
-                  <span><b>{p.sqft.toLocaleString("en-IN")}</b> sqft</span>
+                  {p.sqft ? <span><b>{p.sqft.toLocaleString("en-IN")}</b> sqft</span> : null}
                 </div>
                 <div className="ft"><div className="dl">Dealer: <b>{p.dealer.name}</b></div><button className="ct" onClick={() => setModalProp(p)}>Contact</button></div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         {list.length === 0 && <div className="empty">No properties match.<br />Try a wider budget or another locality.</div>}
         <div style={{ textAlign: "center", marginTop: 22 }}>
@@ -403,7 +488,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                 <div><b>{d.years}</b>Years</div>
                 <div><b>⭐{d.rating}</b>Rating</div>
               </div>
-              <button className="cl" onClick={() => dealerLead(d.name, d.phone)}>📞 Contact dealer</button>
+              <button className="cl" onClick={() => dealerLead(d.name, d.id)}>📞 Contact dealer</button>
             </div>
           ))}
         </div>
@@ -411,7 +496,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
 
       {/* WHY US */}
       <section className="why" id="why"><div className="wrap">
-        <h2 className="sec">Why choose KotaProperty</h2>
+        <h2 className="sec">Why choose Prop100</h2>
         <p className="sub">Simple, honest and made for Kota</p>
         <div className="whygrid">
           <div className="whycard"><div className="ic">🛡️</div><h4>Verified listings</h4><p>Real photos, real prices. No fake posts.</p></div>
@@ -436,9 +521,9 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
       {/* ABOUT */}
       <section id="about" style={{ background: "var(--surface)" }}><div className="wrap">
         <div className="about">
-          <img src={COACH_AREA_IMG} alt="About KotaProperty" />
+          <img src={COACH_AREA_IMG} alt="About Prop100" />
           <div>
-            <h2>About KotaProperty</h2>
+            <h2>About Prop100</h2>
             <p>We are a Kota-based property platform connecting buyers and tenants directly with trusted local dealers. We started to fix a simple problem — fake listings, hidden prices and too many middlemen. Every home here is verified, with real photos and a direct line to the dealer.</p>
             <p>From Talwandi to Kunhadi, we cover every corner of Kota — and we&apos;re especially handy for families looking near the coaching hubs.</p>
             <div className="aboutstats">
@@ -479,12 +564,12 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
           <div>
             <h5>Contact us</h5>
             <a href="tel:+919829012345">📞 +91 98290 12345</a>
-            <a href="mailto:hello@kotaproperty.in">✉️ hello@kotaproperty.in</a>
+            <a href="mailto:hello@prop100.in">✉️ hello@prop100.in</a>
             <p>📍 Office: Vigyan Nagar, Kota,<br />Rajasthan 324005</p>
             <p>🕒 Open: 9 AM – 8 PM (Mon–Sat)</p>
           </div>
         </div>
-        <div className="fbot">© 2026 KotaProperty · Built with Next.js, Supabase &amp; Vercel.</div>
+        <div className="fbot">© 2026 Prop100 · Built with Next.js, Supabase &amp; Vercel.</div>
       </div></footer>
 
       {/* PROPERTY MODAL */}
@@ -509,17 +594,25 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
               {/* lead-gated contact */}
               <div id="contactGate">
                 {unlock.has(modalProp.id) ? (
-                  <div className="reveal">
-                    <div className="tick">✓ Your details are shared with the dealer.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
-                    <a className="btn" href={"tel:+" + modalProp.dealer.phone}>📞 Call {modalProp.dealer.name.split(" ")[0]}</a>
-                    <a className="btn wa" href={`https://wa.me/${modalProp.dealer.phone}?text=${encodeURIComponent("Hi, I am interested in " + modalProp.title + " (KotaProperty)")}`} target="_blank" rel="noreferrer">💬 WhatsApp dealer</a>
-                    <p className="refnote">Mention this reference to the dealer so your deal stays linked to KotaProperty.</p>
-                  </div>
+                  revealPhones[modalProp.id] ? (
+                    <div className="reveal">
+                      <div className="tick">✓ Your details are shared with the dealer.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
+                      <a className="btn" href={"tel:+" + revealPhones[modalProp.id]}>📞 Call {modalProp.dealer.name.split(" ")[0]}</a>
+                      <a className="btn wa" href={`https://wa.me/${revealPhones[modalProp.id]}?text=${encodeURIComponent("Hi, I am interested in " + modalProp.title + " (Prop100)")}`} target="_blank" rel="noreferrer">💬 WhatsApp dealer</a>
+                      <p className="refnote">Mention this reference to the dealer so your deal stays linked to Prop100.</p>
+                    </div>
+                  ) : (
+                    <div className="reveal">
+                      <div className="tick">✓ Your number was verified for this property.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
+                      <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price })}>Verify again to get contact</button>
+                      <p className="refnote">Re-verify your number to reveal the dealer&apos;s contact.</p>
+                    </div>
+                  )
                 ) : (
                   <div className="lock">
                     <div className="lk">🔒</div><h4>Dealer contact is protected</h4>
                     <p>We connect you directly to the dealer — no middlemen. Share your details once to unlock the phone &amp; WhatsApp.</p>
-                    <button className="btn" onClick={() => openLead({ propId: modalProp.id, title: modalProp.title, dealerName: modalProp.dealer.name, dealerPhone: modalProp.dealer.phone, price: modalProp.price })}>Get contact details</button>
+                    <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price })}>Get contact details</button>
                   </div>
                 )}
               </div>
@@ -537,68 +630,99 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
               <h2 style={{ textAlign: "center", fontSize: 20 }}>You&apos;re connected</h2>
               <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 13, marginTop: 4 }}>Reference <b>{dealerReveal.ref}</b> · {dealerReveal.name}</p>
               <a className="btn" href={"tel:+" + dealerReveal.phone}>📞 Call {dealerReveal.name}</a>
-              <a className="btn wa" href={`https://wa.me/${dealerReveal.phone}?text=${encodeURIComponent("Hi (KotaProperty Ref " + dealerReveal.ref + ")")}`} target="_blank" rel="noreferrer">💬 WhatsApp</a>
-              <p className="refnote">Quote this reference so your deal stays linked to KotaProperty.</p>
+              <a className="btn wa" href={`https://wa.me/${dealerReveal.phone}?text=${encodeURIComponent("Hi (Prop100 Ref " + dealerReveal.ref + ")")}`} target="_blank" rel="noreferrer">💬 WhatsApp</a>
+              <p className="refnote">Quote this reference so your deal stays linked to Prop100.</p>
               <button className="btn-more" style={{ width: "100%", marginTop: 12 }} onClick={() => setDealerReveal(null)}>Close</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* LEAD GATEWAY FORM */}
+      {/* LEAD GATEWAY — step 1: form / step 2: OTP */}
       {leadCtx && (
-        <div className="mask show" onClick={(e) => { if (e.target === e.currentTarget) setLeadCtx(null); }}>
+        <div className="mask show" onClick={(e) => { if (e.target === e.currentTarget) { setLeadCtx(null); setGatewayStep("form"); } }}>
           <div className="modal"><div className="mb lf">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ fontSize: 20 }}>{leadCtx.kind === "dealer" ? "Contact " + leadCtx.dealerName : "Get contact details"}</h2>
-              <button onClick={() => setLeadCtx(null)} style={{ fontSize: 22, color: "var(--muted)" }}>×</button>
+              <h2 style={{ fontSize: 20 }}>
+                {gatewayStep === "otp" ? "Enter OTP" : leadCtx.kind === "dealer" ? "Contact " + leadCtx.dealerName : "Get contact details"}
+              </h2>
+              <button onClick={() => { setLeadCtx(null); setGatewayStep("form"); }} style={{ fontSize: 22, color: "var(--muted)" }}>×</button>
             </div>
-            <p style={{ color: "var(--muted)", fontSize: 14, margin: "6px 0 14px" }}
-               dangerouslySetInnerHTML={{ __html: leadCtx.kind === "dealer" ? `Share your details and we'll connect you directly with <b>${leadCtx.dealerName}</b>.` : `Share your details once to unlock the contact for <b>${leadCtx.title}</b>.` }} />
-            <input placeholder="Your name" value={ldName} onChange={(e) => setLdName(e.target.value)} />
-            <input placeholder="Phone number" inputMode="numeric" value={ldPhone} onChange={(e) => setLdPhone(e.target.value)} />
-            <select value={ldIntent} onChange={(e) => setLdIntent(e.target.value)}>
-              <option>I want to Buy</option><option>I want to Rent</option><option>Just exploring</option>
-            </select>
-            <button className="btn" onClick={submitLead}>Unlock contact details</button>
-            <p className="refnote">🔒 Your details are safe and shared only with the dealer — no brokerage to you.</p>
+
+            {gatewayStep === "form" ? (
+              <>
+                <p style={{ color: "var(--muted)", fontSize: 14, margin: "6px 0 14px" }}>
+                  {leadCtx.kind === "dealer"
+                    ? <>We&apos;ll send an OTP to verify and connect you with <b>{leadCtx.dealerName}</b>.</>
+                    : <>Verify your phone to unlock the contact for <b>{leadCtx.title}</b>.</>}
+                </p>
+                <input placeholder="Your name *" value={ldName} onChange={(e) => setLdName(e.target.value)} />
+                <input placeholder="Phone number *" inputMode="numeric" value={ldPhone} onChange={(e) => setLdPhone(e.target.value)} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <input type="date" title="Moving in from?" value={ldMoveIn} onChange={(e) => setLdMoveIn(e.target.value)} style={{ marginBottom: 0 }} />
+                  <select value={ldOccupants} onChange={(e) => setLdOccupants(e.target.value)} style={{ marginBottom: 0 }}>
+                    <option value="1">1 person</option>
+                    <option value="2">2 people</option>
+                    <option value="3">3 people</option>
+                    <option value="4">4+ people</option>
+                  </select>
+                </div>
+                <button className="btn" onClick={sendOtp} disabled={submitting}>
+                  {submitting ? "Sending OTP…" : "Send OTP →"}
+                </button>
+                <p className="refnote">🔒 OTP verifies your number — no spam, no brokerage fee.</p>
+              </>
+            ) : (
+              <>
+                <p style={{ color: "var(--muted)", fontSize: 14, margin: "6px 0 14px" }}>
+                  Code sent to <b>+91 {ldPhone.replace(/\D/g, "").slice(0, 5)}XXXXX</b>. Expires in 10 min.
+                </p>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  placeholder="6-digit OTP"
+                  maxLength={6}
+                  value={ldOtp}
+                  onChange={(e) => { setLdOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
+                  style={{ letterSpacing: 8, fontSize: 22, textAlign: "center" }}
+                  autoFocus
+                  disabled={otpAttempts >= 3}
+                />
+                {otpError && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10, marginTop: -4 }}>{otpError}</p>}
+                {otpAttempts >= 3 ? (
+                  <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10, textAlign: "center" }}>Too many incorrect attempts. Request a new OTP below.</p>
+                ) : (
+                  <button className="btn" onClick={submitLead} disabled={submitting}>
+                    {submitting ? "Verifying…" : "Verify & unlock contact"}
+                  </button>
+                )}
+                <button onClick={sendOtp} disabled={submitting || resendCooldown > 0} style={{ display: "block", width: "100%", marginTop: 10, color: "var(--muted)", fontSize: 13, padding: "8px 0", textAlign: "center" }}>
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Didn't receive it? Resend OTP"}
+                </button>
+                <button onClick={() => setGatewayStep("form")} style={{ display: "block", width: "100%", marginTop: 4, color: "var(--muted)", fontSize: 13, padding: "8px 0", textAlign: "center" }}>
+                  ← Change phone number
+                </button>
+              </>
+            )}
           </div></div>
         </div>
       )}
 
-      {/* ADMIN DEAL TRACKER */}
+      {/* ADMIN DEAL TRACKER — full dashboard is item 5 in the build plan */}
       {adminOpen && (
         <div className="mask show" onClick={(e) => { if (e.target === e.currentTarget) setAdminOpen(false); }}>
-          <div className="modal" style={{ maxWidth: 780 }}><div className="mb">
+          <div className="modal" style={{ maxWidth: 480 }}><div className="mb">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <h2 style={{ fontSize: 20 }}>📊 Deal tracker</h2>
               <button onClick={() => setAdminOpen(false)} style={{ fontSize: 22, color: "var(--muted)" }}>×</button>
             </div>
-            <p className="dim" style={{ margin: "6px 0" }}>Every enquiry is logged with a reference code. Update the status as it progresses — mark <b>Deal closed – Won</b> when a customer buys or rents through us.</p>
-            <div className="adminstats">
-              <div className="ab"><b>{leads.length}</b><span>Total leads</span></div>
-              <div className="ab"><b>{leads.filter((l) => l.status !== "New").length}</b><span>In progress</span></div>
-              <div className="ab"><b>{wonLeads.length}</b><span>Deals won</span></div>
-              <div className="ab"><b>{fmt(wonValue)}</b><span>Deal value</span></div>
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table className="atable">
-                <thead><tr><th>Ref / Date</th><th>Customer</th><th>Property / Dealer</th><th>Status</th></tr></thead>
-                <tbody>
-                  {leads.length === 0 ? (
-                    <tr><td colSpan={4} style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>No leads yet. Submit an enquiry to see it here.</td></tr>
-                  ) : (
-                    leads.map((l, i) => (
-                      <tr key={l.ref}>
-                        <td><b>{l.ref}</b><br /><span className="dim">{l.date}</span></td>
-                        <td>{l.name}<br /><a className="dim" href={"tel:+91" + l.phone}>{l.phone}</a><br /><span className="dim">{l.intent}</span></td>
-                        <td>{l.prop}<br /><span className="dim">{l.dealer || "—"}{l.price ? " · " + fmt(l.price) : ""}</span></td>
-                        <td><select value={l.status} onChange={(e) => setStatus(i, e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div style={{ textAlign: "center", padding: "32px 10px" }}>
+              <div style={{ fontSize: 38, marginBottom: 12 }}>🗄️</div>
+              <p style={{ fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>Leads are now saved to Supabase</p>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20, lineHeight: 1.6 }}>
+                The admin dashboard is being built. Until then, view all leads in your Supabase project → Table Editor → leads table.
+              </p>
+              <button className="btn-more" onClick={() => setAdminOpen(false)}>Close</button>
             </div>
           </div></div>
         </div>
@@ -616,12 +740,12 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         </div>
         <div className="chatbody" ref={chatBodyRef}>
           {msgs.map((m, i) => {
-            if ("text" in m) return <div key={i} className={"msg " + m.who} dangerouslySetInnerHTML={{ __html: m.text }} />;
+            if ("text" in m) return <div key={i} className={"msg " + m.who} dangerouslySetInnerHTML={{ __html: m.text.replace(/\n/g, "<br/>") }} />;
             if ("dealers" in m) return (
               <div key={i}>
                 {m.dealers.map((d) => (
                   <div key={d.id} className="msg bot" style={{ marginBottom: 8 }}>
-                    <b>{d.name}</b> · {d.role}<br />⭐ {d.rating} · <button onClick={() => dealerLead(d.name, d.phone)} style={{ color: "var(--red)", fontWeight: 700 }}>Get contact →</button>
+                    <b>{d.name}</b> · {d.role}<br />⭐ {d.rating} · <button onClick={() => dealerLead(d.name, d.id)} style={{ color: "var(--red)", fontWeight: 700 }}>Get contact →</button>
                   </div>
                 ))}
               </div>
@@ -639,15 +763,24 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
               </div>
             );
           })}
+          {chatLoading && (
+            <div className="msg bot" style={{ padding: "10px 14px", letterSpacing: 2 }}>
+              <span style={{ animation: "none" }}>•••</span>
+            </div>
+          )}
         </div>
         <div className="qreplies">
-          {qreplies.map((q) => <button key={q} className="qr" onClick={() => handleChat(q)}>{q}</button>)}
+          {!chatLoading && qreplies.map((q) => <button key={q} className="qr" onClick={() => handleChat(q)}>{q}</button>)}
         </div>
         <div className="chatin">
-          <input placeholder="Type here… e.g. 2 BHK in Talwandi" value={chatInput}
-                 onChange={(e) => setChatInput(e.target.value)}
-                 onKeyDown={(e) => { if (e.key === "Enter") { handleChat(chatInput.trim()); setChatInput(""); } }} />
-          <button onClick={() => { handleChat(chatInput.trim()); setChatInput(""); }}>➤</button>
+          <input
+            placeholder="Type here… e.g. hostel near Allen"
+            value={chatInput}
+            disabled={chatLoading}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !chatLoading) { handleChat(chatInput.trim()); setChatInput(""); } }}
+          />
+          <button disabled={chatLoading} onClick={() => { handleChat(chatInput.trim()); setChatInput(""); }}>➤</button>
         </div>
       </div>
 

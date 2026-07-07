@@ -1,10 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const publishable = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-export const supabaseEnabled = Boolean(url && anon);
+export const supabaseEnabled = Boolean(url && publishable);
 
-// A single anon client works for both server (read) and browser (read + insert
-// leads). RLS policies in supabase/schema.sql keep it safe.
-export const supabase = supabaseEnabled ? createClient(url as string, anon as string) : null;
+// Publishable-key client — safe to use in browser and server components for
+// reads. Lead writes go through /api/leads (service role, server only).
+export const supabase = supabaseEnabled
+  ? createClient(url as string, publishable as string)
+  : null;

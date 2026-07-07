@@ -1,0 +1,391 @@
+/* ── Page shell ─────────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* ── Top nav ─────────────────────────────────────────────────── */
+.topNav {
+  background: var(--dark);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+.topNavInner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 14px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.backBtn {
+  color: #7a8fa3;
+  font-size: 22px;
+  line-height: 1;
+  padding: 6px 8px 6px 0;
+  flex-shrink: 0;
+}
+.navLogo {
+  font-weight: 800;
+  font-size: 15px;
+}
+.navTitle {
+  font-size: 13px;
+  color: #7a8fa3;
+  flex: 1;
+}
+
+/* ── Location card ───────────────────────────────────────────── */
+.locCard {
+  background: var(--dark);
+  padding: 20px 14px 22px;
+}
+.locCardInner {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.locLabel {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.locSub {
+  font-size: 13px;
+  color: #7a8fa3;
+  margin-bottom: 16px;
+}
+
+/* GPS button */
+.gpsBtn {
+  width: 100%;
+  background: var(--red);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  border-radius: 12px;
+  padding: 15px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  transition: opacity 0.15s;
+}
+.gpsBtn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.gpsBtn:not(:disabled):active {
+  opacity: 0.85;
+}
+
+/* divider */
+.orRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.orLine {
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+}
+.orText {
+  font-size: 12px;
+  color: #7a8fa3;
+  font-weight: 600;
+}
+
+/* text input for Places Autocomplete / area fallback */
+.locInput {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 14px;
+  font-size: 15px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  outline: none;
+  box-sizing: border-box;
+}
+.locInput::placeholder { color: #7a8fa3; }
+.locInput:focus { background: rgba(255,255,255,0.15); }
+
+/* area dropdown fallback */
+.locSelect {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 14px;
+  font-size: 15px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  outline: none;
+  box-sizing: border-box;
+  appearance: none;
+}
+.locSelect option { background: #1e293b; color: #fff; }
+
+/* active location pill */
+.locPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 8px 14px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #fff;
+  font-weight: 600;
+}
+.locPillClear {
+  font-size: 16px;
+  color: #7a8fa3;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+/* ── Filters bar ─────────────────────────────────────────────── */
+.filtersWrap {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 54px;
+  z-index: 50;
+}
+.filtersInner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 10px 14px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filtersInner::-webkit-scrollbar { display: none; }
+.fchip {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--bg);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.fchipActive {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(220,53,69,0.06);
+}
+.fchipSelect {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--bg);
+  outline: none;
+  cursor: pointer;
+  white-space: nowrap;
+  appearance: none;
+}
+
+/* ── Results ─────────────────────────────────────────────────── */
+.body {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 14px 14px 60px;
+}
+.resultCount {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+.resultCount b {
+  color: var(--ink);
+}
+
+/* Empty / loading states */
+.emptyState {
+  text-align: center;
+  padding: 60px 20px;
+  background: var(--surface);
+  border-radius: 14px;
+  border: 1px solid var(--line);
+}
+.emptyIcon {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+.emptyTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.emptySub {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── Property card ───────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+  box-shadow: var(--sh);
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+.card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+.cardImg {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+  background: var(--line);
+}
+.cardImgPlaceholder {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  color: var(--muted);
+}
+.cardTag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 3px 10px;
+  backdrop-filter: blur(4px);
+}
+.distBadge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: 20px;
+  padding: 4px 10px;
+  backdrop-filter: blur(4px);
+}
+.imgWrap {
+  position: relative;
+}
+.cardBody {
+  padding: 14px;
+}
+.cardPrice {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+.cardPricePer {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.cardTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+.cardLoc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.cardStats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.cardStats b {
+  color: var(--ink);
+}
+.cardFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cardDealer {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cardDealer b {
+  color: var(--ink);
+}
+.cardCta {
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 7px 14px;
+  flex-shrink: 0;
+  border: none;
+  cursor: pointer;
+}
+
+/* ── Skeleton shimmer ───────────────────────────────────────── */
+.sk {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--line) 25%, var(--surface) 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: skShimmer 1.4s infinite;
+}
+.skCard {
+  background: var(--surface);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+@keyframes skShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

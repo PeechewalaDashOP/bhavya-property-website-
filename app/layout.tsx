@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KotaProperty — Buy, Rent & Sell Property in Kota",
+  title: "Prop100 — Buy, Rent & Sell Property in Kota",
   description:
     "Verified houses, flats, plots and rentals across Kota — Talwandi, Vigyan Nagar, Mahaveer Nagar, Dadabadi and more. Direct from trusted dealers, no buyer brokerage.",
   keywords: [
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     "plots in Kota", "Talwandi", "Vigyan Nagar", "real estate Kota Rajasthan"
   ],
   openGraph: {
-    title: "KotaProperty — Buy, Rent & Sell Property in Kota",
+    title: "Prop100 — Buy, Rent & Sell Property in Kota",
     description: "Verified homes across Kota, direct from trusted dealers.",
     type: "website"
   },

@@ -1,4 +1,4 @@
-import { Area, Dealer, Property } from "./types";
+import { Area, Property, PublicDealer } from "./types";
 import { AREAS as SAMPLE_AREAS, DEALERS as SAMPLE_DEALERS, PROPS as SAMPLE_PROPS } from "./sampleData";
 import { supabase, supabaseEnabled } from "./supabase";
 
@@ -7,9 +7,16 @@ import { supabase, supabaseEnabled } from "./supabase";
 
 type Row = Record<string, unknown>;
 
-function mapProperty(row: Row, dealersById: Map<number, Dealer>): Property {
+function toPublicDealer(d: PublicDealer): PublicDealer {
+  return { id: d.id, name: d.name, role: d.role, years: d.years, rating: d.rating };
+}
+
+function mapProperty(row: Row, dealersById: Map<number, PublicDealer>): Property {
+  const dealer = dealersById.get(row.dealer_id as number) ?? toPublicDealer(SAMPLE_DEALERS[0]);
+  const gallery = (row.gallery as string[]) ?? [];
   return {
     id: row.id as number,
+    slug: (row.slug as string) ?? null,
     type: row.type as "sale" | "rent",
     ptype: row.ptype as string,
     loc: row.loc as string,
@@ -17,58 +24,49 @@ function mapProperty(row: Row, dealersById: Map<number, Dealer>): Property {
     bhk: (row.bhk as number) ?? 0,
     baths: (row.baths as number) ?? 0,
     title: row.title as string,
-    price: row.price as number,
-    sqft: row.sqft as number,
-    furnish: row.furnish as string,
-    img: (row.img as string) ?? ((row.gallery as string[]) ?? [])[0],
-    gallery: (row.gallery as string[]) ?? [],
+    price: (row.rent_per_month as number) ?? (row.price as number),
+    sqft: (row.sqft as number) ?? 0,
+    furnish: (row.furnishing_status as string) ?? (row.furnish as string) ?? "",
+    img: (row.img as string) ?? gallery[0] ?? "",
+    gallery,
     features: (row.features as string[]) ?? [],
-    dealer: dealersById.get(row.dealer_id as number) ?? SAMPLE_DEALERS[0],
-    verified: Boolean(row.verified),
-    photos: (row.photos as number) ?? 6,
+    dealer: toPublicDealer(dealer),
+    verified: Boolean(row.is_verified ?? row.verified),
+    photos: (row.photos as number) ?? gallery.length,
     postedDays: (row.posted_days as number) ?? 0,
-    desc: (row.description as string) ?? ""
+    desc: (row.description as string) ?? "",
   };
 }
 
-export async function getData(): Promise<{ properties: Property[]; dealers: Dealer[]; areas: Area[] }> {
+export async function getData(): Promise<{ properties: Property[]; dealers: PublicDealer[]; areas: Area[] }> {
   if (!supabaseEnabled || !supabase) {
-    return { properties: SAMPLE_PROPS, dealers: SAMPLE_DEALERS, areas: SAMPLE_AREAS };
+    return {
+      properties: SAMPLE_PROPS.map((p) => ({ ...p, slug: null, dealer: toPublicDealer(p.dealer) })),
+      dealers: SAMPLE_DEALERS.map(toPublicDealer),
+      areas: SAMPLE_AREAS,
+    };
   }
   try {
     const [{ data: dealers }, { data: areas }, { data: props }] = await Promise.all([
-      supabase.from("dealers").select("*").order("id"),
+      supabase.from("dealers").select("id,name,role,years,rating").order("id"),
       supabase.from("areas").select("*"),
-      supabase.from("properties").select("*").order("posted_days")
+      supabase.from("properties").select("*").eq("is_approved", true).order("posted_days")
     ]);
-    const dealerList = (dealers ?? []) as unknown as Dealer[];
-    const byId = new Map<number, Dealer>(dealerList.map((d) => [d.id, d]));
+    const dealerList = (dealers ?? []) as unknown as PublicDealer[];
+    const byId = new Map<number, PublicDealer>(dealerList.map((d) => [d.id, d]));
     return {
       properties: ((props ?? []) as Row[]).map((r) => mapProperty(r, byId)),
-      dealers: dealerList.length ? dealerList : SAMPLE_DEALERS,
+      dealers: dealerList.length ? dealerList.map(toPublicDealer) : SAMPLE_DEALERS.map(toPublicDealer),
       areas: ((areas ?? []) as unknown as Area[]).length ? ((areas ?? []) as unknown as Area[]) : SAMPLE_AREAS
     };
   } catch {
-    return { properties: SAMPLE_PROPS, dealers: SAMPLE_DEALERS, areas: SAMPLE_AREAS };
+    return {
+      properties: SAMPLE_PROPS.map((p) => ({ ...p, slug: null, dealer: toPublicDealer(p.dealer) })),
+      dealers: SAMPLE_DEALERS.map(toPublicDealer),
+      areas: SAMPLE_AREAS,
+    };
   }
 }
 
-// Client-side lead insert (used by the gateway + footer form + chatbot).
-export async function saveLead(lead: {
-  ref: string;
-  name: string;
-  phone: string;
-  intent: string;
-  prop: string;
-  dealer: string;
-  price: number;
-  msg?: string;
-}): Promise<void> {
-  if (supabaseEnabled && supabase) {
-    try {
-      await supabase.from("leads").insert({ ...lead, status: "New" });
-    } catch {
-      /* swallow — keep UX smooth in the prototype */
-    }
-  }
-}
+// Lead writes are handled by POST /api/leads (service role, server-side).
+// Do not add client-side lead inserts here.

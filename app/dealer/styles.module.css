@@ -1,0 +1,42 @@
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+.sk {
+  display: block;
+  background: linear-gradient(90deg, #eaecef 25%, #f5f6f8 50%, #eaecef 75%);
+  background-size: 1200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.btnPrimary {
+  transition: transform 0.08s ease, opacity 0.1s ease;
+}
+.btnPrimary:active {
+  transform: scale(0.96);
+  opacity: 0.88;
+}
+
+.btnSecondary {
+  transition: transform 0.08s ease, opacity 0.1s ease;
+}
+.btnSecondary:active {
+  transform: scale(0.96);
+  opacity: 0.75;
+}
+
+.phoneLink {
+  transition: opacity 0.1s ease;
+}
+.phoneLink:active {
+  opacity: 0.65;
+}
+
+.waLink {
+  transition: opacity 0.1s ease;
+}
+.waLink:active {
+  opacity: 0.65;
+}

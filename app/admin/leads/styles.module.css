@@ -1,0 +1,52 @@
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+@keyframes flashGreen {
+  0%   { background-color: rgba(22, 160, 106, 0.14); }
+  100% { background-color: transparent; }
+}
+
+.sk {
+  display: block;
+  background: linear-gradient(90deg, #eaecef 25%, #f5f6f8 50%, #eaecef 75%);
+  background-size: 1200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 5px;
+}
+
+.tableWrap {
+  overflow: auto;
+  max-height: calc(100vh - 230px);
+  border-radius: 12px;
+  border: 1px solid var(--line, #e5e9ef);
+  box-shadow: 0 4px 16px -8px rgba(31, 39, 51, 0.3);
+  background: #fff;
+}
+
+.stickyTh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f5f6f8;
+  box-shadow: 0 1px 0 var(--line, #e5e9ef);
+  padding: 11px 14px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--muted, #6b7480);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.row {
+  transition: background 0.12s;
+}
+
+.row:hover td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.rowFlash td {
+  animation: flashGreen 0.65s ease-out forwards;
+}

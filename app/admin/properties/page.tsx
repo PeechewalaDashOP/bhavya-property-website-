@@ -1,0 +1,326 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { LoadingBar } from "@/components/LoadingBar";
+import { fmt } from "@/lib/format";
+import styles from "./styles.module.css";
+
+type PropRow = {
+  id: number;
+  title: string;
+  type: string;
+  ptype: string;
+  loc: string;
+  price: number | null;
+  rent_per_month: number | null;
+  deposit_amount: number | null;
+  is_approved: boolean;
+  slug: string | null;
+  img: string | null;
+  videos: string[] | null;
+  gallery: string[] | null;
+  features: string[] | null;
+  description: string | null;
+  created_at: string;
+  dealers: { name: string; phone: string } | null;
+};
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" });
+}
+
+function SkeletonCard() {
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: 14, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 12 }}>
+        <span className={styles.sk} style={{ width: 80, height: 80, borderRadius: 10, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <span className={styles.sk} style={{ width: "65%", height: 16, marginBottom: 10 }} />
+          <span className={styles.sk} style={{ width: "45%", height: 13, marginBottom: 10 }} />
+          <span className={styles.sk} style={{ width: "55%", height: 13 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminPropertiesPage() {
+  const router = useRouter();
+  const [props, setProps] = useState<PropRow[]>([]);
+  const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [err, setErr] = useState("");
+
+  const fetchProps = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    if (!supabase) { router.replace("/admin/login"); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.replace("/admin/login"); return; }
+
+    const res = await fetch(`/api/admin/properties?filter=${filter}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (res.status === 401) { router.replace("/admin/login"); return; }
+    if (!res.ok) { setErr("Failed to load properties."); setLoading(false); return; }
+    setProps(await res.json());
+    setLoading(false);
+  }, [filter, router]);
+
+  useEffect(() => { fetchProps(); }, [fetchProps]);
+
+  async function act(id: number, action: "approve" | "reject") {
+    if (!supabase) return;
+    setActing(id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/properties", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session!.access_token}` },
+      body: JSON.stringify({ id, action }),
+    });
+    if (res.ok) {
+      setProps((prev) => {
+        if (action === "reject") return prev.filter((p) => p.id !== id);
+        if (filter === "pending") return prev.filter((p) => p.id !== id);
+        return prev.map((p) => (p.id === id ? { ...p, is_approved: true } : p));
+      });
+      setExpanded(null);
+    } else {
+      await fetchProps();
+    }
+    setActing(null);
+  }
+
+  const pendingCount = props.filter((p) => !p.is_approved).length;
+
+  return (
+    <div>
+      <LoadingBar loading={loading || acting !== null} />
+
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800 }}>
+          Properties{" "}
+          {!loading && filter === "pending" && pendingCount > 0 && (
+            <span style={{ color: "var(--red)", fontWeight: 500, fontSize: 16 }}>
+              {pendingCount} pending
+            </span>
+          )}
+          {!loading && filter === "all" && (
+            <span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 16 }}>
+              {props.length}
+            </span>
+          )}
+        </h1>
+        <button
+          onClick={fetchProps}
+          disabled={loading}
+          style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600, padding: "7px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", opacity: loading ? 0.5 : 1 }}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {(["pending", "all"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={filter === f ? styles.tabActive : styles.tab}
+          >
+            {f === "pending" ? "⏳ Pending Approval" : "All Properties"}
+          </button>
+        ))}
+      </div>
+
+      {err && (
+        <div style={{ color: "var(--red)", padding: "20px 0", fontWeight: 600 }}>{err}</div>
+      )}
+
+      {loading ? (
+        <>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </>
+      ) : props.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--muted)", background: "var(--surface)", borderRadius: 14, border: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>✓</div>
+          <div style={{ fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+            {filter === "pending" ? "Nothing pending — all clear!" : "No properties yet"}
+          </div>
+          <div style={{ fontSize: 14 }}>
+            {filter === "pending" ? "Switch to 'All Properties' to see live listings." : "Dealers can submit via their dashboard."}
+          </div>
+        </div>
+      ) : (
+        props.map((p) => {
+          const displayPrice = p.rent_per_month ?? p.price ?? 0;
+          const isOpen = expanded === p.id;
+          return (
+            <div key={p.id} className={styles.propCard}>
+              {/* Card summary — tap to expand */}
+              <div
+                style={{ display: "flex", gap: 12, cursor: "pointer", alignItems: "flex-start" }}
+                onClick={() => setExpanded(isOpen ? null : p.id)}
+              >
+                {p.img ? (
+                  <img
+                    src={p.img}
+                    alt=""
+                    style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 10, flexShrink: 0 }}
+                  />
+                ) : (
+                  <div style={{ width: 80, height: 80, borderRadius: 10, background: "var(--line)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
+                    {p.type === "rent" ? "🔑" : "🏷️"}
+                  </div>
+                )}
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.title}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>
+                    {p.ptype} · {p.loc}
+                    {p.dealers?.name && <span> · <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong></span>}
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
+                    {fmt(displayPrice)}
+                    {p.type === "rent" ? <span style={{ fontWeight: 400 }}>/mo</span> : ""}
+                    {p.deposit_amount ? (
+                      <span style={{ color: "var(--muted)", fontWeight: 400, fontSize: 12, marginLeft: 6 }}>
+                        + ₹{p.deposit_amount.toLocaleString("en-IN")} dep
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      {fmtDate(p.created_at)} · {p.gallery?.length ?? 0} photos · {p.videos?.length ?? 0} videos
+                    </span>
+                    {p.is_approved ? (
+                      <span className={styles.badgeLive}>✓ Live</span>
+                    ) : (
+                      <span className={styles.badgePending}>⏳ Pending</span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ color: "var(--muted)", fontSize: 16, flexShrink: 0, marginTop: 4 }}>
+                  {isOpen ? "▲" : "▼"}
+                </div>
+              </div>
+
+              {/* Expanded detail panel */}
+              {isOpen && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+
+                  {p.description && (
+                    <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5, marginBottom: 12 }}>
+                      {p.description}
+                    </p>
+                  )}
+
+                  {p.features && p.features.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                      {p.features.map((f) => (
+                        <span key={f} style={{ fontSize: 12, padding: "3px 10px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 20, color: "var(--muted)", fontWeight: 600 }}>
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Photo strip */}
+                  {(p.gallery?.length ?? 0) > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 6 }}>Photos</div>
+                      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+                        {p.gallery!.map((url, i) => (
+                          <img
+                            key={i}
+                            src={url}
+                            alt=""
+                            style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Video links */}
+                  {(p.videos?.length ?? 0) > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 6 }}>Videos</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {p.videos!.map((url, i) => (
+                          <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 13, color: "#1568c2", fontWeight: 600, textDecoration: "none" }}
+                          >
+                            ▶ Video {i + 1}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dealer info */}
+                  {p.dealers && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+                      Submitted by <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong>
+                      {p.dealers.phone && <span> · {p.dealers.phone}</span>}
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {!p.is_approved ? (
+                      <>
+                        <button
+                          onClick={() => act(p.id, "approve")}
+                          disabled={acting === p.id}
+                          className={styles.btnApprove}
+                        >
+                          ✓ Approve & Publish
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete "${p.title}"? This cannot be undone.`)) act(p.id, "reject");
+                          }}
+                          disabled={acting === p.id}
+                          className={styles.btnReject}
+                        >
+                          ✗ Reject
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Remove "${p.title}" from public site?`)) act(p.id, "reject");
+                        }}
+                        disabled={acting === p.id}
+                        className={styles.btnReject}
+                      >
+                        ✗ Remove from Site
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}

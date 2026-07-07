@@ -56,6 +56,7 @@ for (let i = 0; i < 80; i++) {
     bhk, baths: bhk ? 1 + Math.floor(r() * 2) : 0, title: `${bhk ? bhk + " BHK " : ""}${pt} in ${a[0]}`,
     price, sqft, furnish: FURNISH[Math.floor(r() * 3)], img: g[0], gallery: g, features: fl,
     dealer_id: Math.floor(r() * DEALERS.length), verified: r() < 0.8, photos: 6 + Math.floor(r() * 12), posted_days: Math.floor(r() * 30),
+    is_approved: true,
     description: `Well-kept ${pt.toLowerCase()} in ${a[0]}, Kota. Close to ${a[1] ? a[1] + ", " : ""}market and main road. Ready to move, clear papers. Call to arrange a visit.`
   });
 }
