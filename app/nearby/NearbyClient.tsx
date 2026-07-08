@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -68,7 +68,6 @@ const PTYPES = ["All", "Hostel", "PG", "Room", "Flat", "House", "Shop"];
 /* ─── Main component ─────────────────────────────────────────── */
 export default function NearbyClient({ mapsKey }: { mapsKey: string }) {
   const router = useRouter();
-  const acInputRef = useRef<HTMLInputElement>(null);
 
   // User location
   const [userLat, setUserLat] = useState<number | null>(null);
@@ -76,7 +75,6 @@ export default function NearbyClient({ mapsKey }: { mapsKey: string }) {
   const [locLabel, setLocLabel] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
-  const [mapsLoaded, setMapsLoaded] = useState(false);
 
   // Properties
   const [allProps, setAllProps] = useState<NearbyProp[]>([]);
@@ -104,50 +102,6 @@ export default function NearbyClient({ mapsKey }: { mapsKey: string }) {
       });
   }, []);
 
-  // Load Google Maps script (if key set)
-  useEffect(() => {
-    if (!mapsKey || typeof window === "undefined") return;
-    const g = window as unknown as Record<string, unknown>;
-    if (g["google"]) { setMapsLoaded(true); return; }
-    const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}&libraries=places`;
-    s.async = true;
-    s.onload = () => setMapsLoaded(true);
-    document.head.appendChild(s);
-  }, [mapsKey]);
-
-  // Init Places Autocomplete on the text input
-  useEffect(() => {
-    if (!mapsLoaded || !acInputRef.current) return;
-    const google = (window as unknown as Record<string, unknown>)["google"] as {
-      maps: {
-        places: {
-          Autocomplete: new (
-            el: HTMLInputElement,
-            opts: Record<string, unknown>
-          ) => {
-            addListener: (e: string, cb: () => void) => void;
-            getPlace: () => {
-              name?: string;
-              geometry?: { location?: { lat: () => number; lng: () => number } };
-            };
-          };
-        };
-      };
-    };
-    const ac = new google.maps.places.Autocomplete(acInputRef.current, {
-      componentRestrictions: { country: "in" },
-      fields: ["geometry", "name"],
-    });
-    ac.addListener("place_changed", () => {
-      const p = ac.getPlace();
-      if (!p.geometry?.location) return;
-      setUserLat(p.geometry.location.lat());
-      setUserLng(p.geometry.location.lng());
-      setLocLabel(p.name ?? acInputRef.current?.value ?? "");
-      setGpsError("");
-    });
-  }, [mapsLoaded]);
 
   // GPS: browser geolocation
   function useGps() {
@@ -188,7 +142,6 @@ export default function NearbyClient({ mapsKey }: { mapsKey: string }) {
     setUserLat(null);
     setUserLng(null);
     setLocLabel("");
-    if (acInputRef.current) acInputRef.current.value = "";
   }
 
   // Compute + filter properties
@@ -259,26 +212,17 @@ export default function NearbyClient({ mapsKey }: { mapsKey: string }) {
             <div className={styles.orLine} />
           </div>
 
-          {/* Places Autocomplete (if key) or area dropdown */}
-          {mapsKey ? (
-            <input
-              ref={acInputRef}
-              className={styles.locInput}
-              type="text"
-              placeholder="Type coaching / college / location…"
-            />
-          ) : (
-            <select
-              className={styles.locSelect}
-              defaultValue=""
-              onChange={(e) => selectArea(e.target.value)}
-            >
-              <option value="" disabled>Select area in Kota…</option>
-              {KOTA_AREAS.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          )}
+          {/* Area dropdown */}
+          <select
+            className={styles.locSelect}
+            defaultValue=""
+            onChange={(e) => selectArea(e.target.value)}
+          >
+            <option value="" disabled>Select area in Kota…</option>
+            {KOTA_AREAS.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
 
           {/* Active location pill */}
           {hasLocation && (

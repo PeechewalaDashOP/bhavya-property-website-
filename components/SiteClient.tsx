@@ -370,7 +370,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
           <a href="#contact">Contact</a>
         </nav>
         <div className="sp" />
-        <button className="post" onClick={() => scrollToId("contact")}>+ Post Property</button>
+        <button className="post" onClick={() => router.push("/dealer/post")}>+ Post Property</button>
         <button className="ham" onClick={() => setMobOpen((v) => !v)}>☰</button>
       </div></header>
       <div className={"mob" + (mobOpen ? " show" : "")} onClick={() => setMobOpen(false)}>
@@ -435,8 +435,13 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
 
       {/* LISTINGS */}
       <section id="listings" style={{ paddingTop: 10 }}><div className="wrap">
-        <h2 className="sec">Properties in Kota</h2>
-        <p className="sub">Filter and find what fits you</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
+          <div>
+            <h2 className="sec" style={{ marginBottom: 2 }}>Properties in Kota</h2>
+            <p className="sub" style={{ marginBottom: 0 }}>Filter and find what fits you</p>
+          </div>
+          <a href="/map" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "#1a2332", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>🗺️ Map View</a>
+        </div>
         <div className="fbar"><div className="fchips">
           <div className="fchip"><select value={fBhk} onChange={(e) => setFBhk(e.target.value)}>
             <option value="">BHK: Any</option><option value="1">1 BHK</option><option value="2">2 BHK</option><option value="3">3 BHK</option><option value="4">4+ BHK</option>
