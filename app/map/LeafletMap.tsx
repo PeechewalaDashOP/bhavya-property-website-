@@ -35,7 +35,7 @@ function fmt(n: number) {
 }
 
 function makeIcon(L: typeof import("leaflet"), active: boolean, hovered: boolean) {
-  const bg = active ? "#16a34a" : hovered ? "#2563eb" : "#e63946";
+  const bg = active ? "#16a34a" : hovered ? "#2563eb" : "#0D7377";
   const size = active ? 18 : hovered ? 16 : 12;
   return L.divIcon({
     className: "",
