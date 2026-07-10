@@ -24,7 +24,7 @@ type DealerLead = {
 };
 
 const STATUS_LABEL: Record<Status, string> = { new: "New", contacted: "Called", closed: "Closed", dead: "Dead" };
-const STATUS_COLOR: Record<Status, string> = { new: "#1568c2", contacted: "#d97706", closed: "#16a06a", dead: "#6b7480" };
+const STATUS_COLOR: Record<Status, string> = { new: "var(--color-primary)", contacted: "#d97706", closed: "#16a06a", dead: "#6b7480" };
 
 function fmtPhone(p: string): string {
   const d = p.replace(/\D/g, "").slice(-10);
@@ -77,7 +77,7 @@ function LeadCard({
         borderRadius: 14,
         padding: "16px",
         marginBottom: 12,
-        border: isNew ? "2px solid #1568c2" : "1px solid var(--line)",
+        border: isNew ? "2px solid var(--color-primary)" : "1px solid var(--line)",
         boxShadow: "var(--sh)",
         opacity: dim ? 0.6 : 1,
         transition: "opacity 0.2s",
@@ -98,7 +98,7 @@ function LeadCard({
       <a
         href={`tel:+91${lead.customer_phone}`}
         className={styles.phoneLink}
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 17, fontWeight: 700, color: "#1568c2", marginBottom: 8, padding: "2px 0" }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 17, fontWeight: 700, color: "var(--color-primary)", marginBottom: 8, padding: "2px 0" }}
       >
         📞 +91 {fmtPhone(lead.customer_phone)}
       </a>
@@ -149,7 +149,7 @@ function LeadCard({
             onClick={() => onStatus(lead.id, "contacted")}
             disabled={updating}
             className={styles.btnPrimary}
-            style={{ flex: 1, background: "#1568c2", color: "#fff", fontWeight: 700, borderRadius: 10, padding: "14px", fontSize: 16, opacity: updating ? 0.55 : 1, border: "none", cursor: updating ? "default" : "pointer" }}
+            style={{ flex: 1, background: "var(--color-primary)", color: "#fff", fontWeight: 700, borderRadius: 10, padding: "14px", fontSize: 16, opacity: updating ? 0.55 : 1, border: "none", cursor: updating ? "default" : "pointer" }}
           >
             ✅ I Called Them
           </button>
@@ -292,7 +292,7 @@ export default function DealerPage() {
               <div>
                 <span style={{ fontSize: 18, fontWeight: 800 }}>Your Leads</span>
                 {!loading && newCount > 0 && (
-                  <span style={{ marginLeft: 8, background: "#1568c2", color: "#fff", fontSize: 12, fontWeight: 700, borderRadius: 20, padding: "3px 10px" }}>
+                  <span style={{ marginLeft: 8, background: "var(--color-primary)", color: "#fff", fontSize: 12, fontWeight: 700, borderRadius: 20, padding: "3px 10px" }}>
                     {newCount} new
                   </span>
                 )}

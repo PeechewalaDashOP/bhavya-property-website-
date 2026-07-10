@@ -582,7 +582,7 @@ export default function PropertyDetail({
             ))}
           </div>
           {selectedUnit && (
-            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(220,53,69,0.05)", borderRadius: 10, border: "1px solid rgba(220,53,69,0.15)", fontSize: 13, color: "var(--ink)" }}>
+            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(15,118,110,0.05)", borderRadius: 10, border: "1px solid rgba(15,118,110,0.15)", fontSize: 13, color: "var(--ink)" }}>
               Selected: <b>{selectedUnit.label}</b> — tap &ldquo;Get Dealer Contact&rdquo; below to enquire about this room type.
             </div>
           )}

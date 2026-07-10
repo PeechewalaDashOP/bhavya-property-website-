@@ -35,7 +35,7 @@ function fmt(n: number) {
 }
 
 function makeIcon(L: typeof import("leaflet"), active: boolean, hovered: boolean) {
-  const bg = active ? "#16a34a" : hovered ? "#2563eb" : "#0D7377";
+  const bg = active ? "#16a34a" : hovered ? "#2563eb" : "#0F766E";
   const size = active ? 18 : hovered ? 16 : 12;
   return L.divIcon({
     className: "",
@@ -101,7 +101,7 @@ export default function LeafletMap({ properties, hoverId, activeId, onSelect }: 
             .addTo(map)
             .bindPopup(
               `<div style="min-width:160px;font-family:inherit">
-                <div style="font-weight:700;font-size:14px;color:#e63946">${fmt(price)}${p.type === "rent" ? "/mo" : ""}</div>
+                <div style="font-weight:700;font-size:14px;color:#0F766E">${fmt(price)}${p.type === "rent" ? "/mo" : ""}</div>
                 <div style="font-size:13px;margin:2px 0">${p.title}</div>
                 <div style="font-size:12px;color:#666">📍 ${p.loc} · ${p.ptype}</div>
               </div>`,

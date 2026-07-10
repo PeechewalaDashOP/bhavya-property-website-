@@ -24,7 +24,7 @@ type PropRow = {
   features: string[] | null;
   description: string | null;
   created_at: string;
-  dealers: { name: string; phone: string } | null;
+  dealers: { name: string; phone: string; is_active: boolean; role: string | null } | null;
 };
 
 function fmtDate(iso: string) {
@@ -106,7 +106,7 @@ export default function AdminPropertiesPage() {
         <h1 style={{ fontSize: 22, fontWeight: 800 }}>
           Properties{" "}
           {!loading && filter === "pending" && pendingCount > 0 && (
-            <span style={{ color: "var(--red)", fontWeight: 500, fontSize: 16 }}>
+            <span style={{ color: "var(--color-warning)", fontWeight: 500, fontSize: 16 }}>
               {pendingCount} pending
             </span>
           )}
@@ -139,7 +139,7 @@ export default function AdminPropertiesPage() {
       </div>
 
       {err && (
-        <div style={{ color: "var(--red)", padding: "20px 0", fontWeight: 600 }}>{err}</div>
+        <div style={{ color: "var(--color-danger)", padding: "20px 0", fontWeight: 600 }}>{err}</div>
       )}
 
       {loading ? (
@@ -189,7 +189,16 @@ export default function AdminPropertiesPage() {
                   </div>
                   <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>
                     {p.ptype} · {p.loc}
-                    {p.dealers?.name && <span> · <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong></span>}
+                    {p.dealers?.name && (
+                      <span>
+                        {" "}· <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong>
+                        {p.dealers.role === "owner" && (
+                          <span style={{ fontSize: 10, background: "rgba(245,158,11,0.12)", color: "#b45309", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 4, padding: "1px 5px", fontWeight: 800, marginLeft: 5, verticalAlign: "middle" }}>
+                            Self-listed
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
                     {fmt(displayPrice)}
@@ -265,7 +274,7 @@ export default function AdminPropertiesPage() {
                             href={url}
                             target="_blank"
                             rel="noreferrer"
-                            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 13, color: "#1568c2", fontWeight: 600, textDecoration: "none" }}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 13, color: "var(--color-primary)", fontWeight: 600, textDecoration: "none" }}
                           >
                             ▶ Video {i + 1}
                           </a>
@@ -274,11 +283,16 @@ export default function AdminPropertiesPage() {
                     </div>
                   )}
 
-                  {/* Dealer info */}
+                  {/* Dealer / owner info */}
                   {p.dealers && (
                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-                      Submitted by <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong>
-                      {p.dealers.phone && <span> · {p.dealers.phone}</span>}
+                      {p.dealers.role === "owner" ? "Owner" : "Dealer"}:{" "}
+                      <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong>
+                      {p.dealers.phone && (
+                        <a href={`tel:${p.dealers.phone}`} style={{ color: "var(--color-primary)", fontWeight: 600, marginLeft: 6 }}>
+                          {p.dealers.phone}
+                        </a>
+                      )}
                     </div>
                   )}
 

@@ -33,7 +33,7 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 
 const STATUS_COLOR: Record<Status, string> = {
-  new: "#1568c2",
+  new: "var(--color-primary)",
   contacted: "#d97706",
   closed: "#16a06a",
   dead: "#6b7480",

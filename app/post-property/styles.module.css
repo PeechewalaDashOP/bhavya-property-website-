@@ -30,18 +30,18 @@
   box-shadow: 0 0 0 4px rgba(15,118,110,0.15);
 }
 .progressDotDone {
-  border-color: var(--ok, #16a06a);
-  background: var(--ok, #16a06a);
+  border-color: var(--color-success);
+  background: var(--color-success);
   color: #fff;
 }
 .progressLine {
-  width: 48px;
+  width: 40px;
   height: 2px;
   background: var(--line);
   transition: background 0.3s;
 }
 .progressLineDone {
-  background: var(--ok, #16a06a);
+  background: var(--color-success);
 }
 
 /* ── Listing type toggle ────────────────────────────────────────── */
@@ -65,9 +65,7 @@
   background: transparent;
   color: var(--muted);
 }
-.typeBtn:active {
-  transform: scale(0.97);
-}
+.typeBtn:active { transform: scale(0.97); }
 .typeBtnActive {
   background: var(--color-primary);
   color: #fff;
@@ -95,9 +93,7 @@
   font-weight: 700;
   color: var(--muted);
 }
-.ptypeCard:active {
-  transform: scale(0.94);
-}
+.ptypeCard:active { transform: scale(0.94); }
 .ptypeCardActive {
   border-color: var(--color-primary);
   background: rgba(15,118,110,0.07);
@@ -122,9 +118,7 @@
   transition: all 0.12s;
   color: var(--muted);
 }
-.numBtn:active {
-  transform: scale(0.9);
-}
+.numBtn:active { transform: scale(0.9); }
 .numBtnActive {
   border-color: var(--color-primary);
   background: var(--color-primary);
@@ -198,9 +192,7 @@
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
-.select:focus {
-  border-color: var(--color-primary);
-}
+.select:focus { border-color: var(--color-primary); }
 
 /* ── Option button groups ───────────────────────────────────────── */
 .optBtns {
@@ -219,9 +211,7 @@
   color: var(--muted);
   transition: all 0.12s;
 }
-.optBtn:active {
-  transform: scale(0.95);
-}
+.optBtn:active { transform: scale(0.95); }
 .optBtnActive {
   border-color: var(--color-primary);
   background: rgba(15,118,110,0.08);
@@ -235,9 +225,7 @@
   justify-content: space-between;
   padding: 11px 0;
 }
-.toggleRow + .toggleRow {
-  border-top: 1px solid var(--line);
-}
+.toggleRow + .toggleRow { border-top: 1px solid var(--line); }
 .toggleLabel {
   font-size: 15px;
   font-weight: 600;
@@ -249,9 +237,7 @@
   height: 26px;
   flex-shrink: 0;
 }
-.toggle input {
-  display: none;
-}
+.toggle input { display: none; }
 .toggleSlider {
   position: absolute;
   inset: 0;
@@ -270,14 +256,10 @@
   background: #fff;
   border-radius: 50%;
   transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
-.toggle input:checked + .toggleSlider {
-  background: var(--color-primary);
-}
-.toggle input:checked + .toggleSlider::before {
-  transform: translateX(22px);
-}
+.toggle input:checked + .toggleSlider { background: var(--color-primary); }
+.toggle input:checked + .toggleSlider::before { transform: translateX(22px); }
 
 /* ── Feature chips ──────────────────────────────────────────────── */
 .featureChips {
@@ -296,9 +278,7 @@
   color: var(--muted);
   transition: all 0.12s;
 }
-.chip:active {
-  transform: scale(0.94);
-}
+.chip:active { transform: scale(0.94); }
 .chipActive {
   border-color: var(--color-primary);
   background: rgba(15,118,110,0.08);
@@ -322,9 +302,7 @@
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
-.textarea:focus {
-  border-color: var(--color-primary);
-}
+.textarea:focus { border-color: var(--color-primary); }
 
 /* ── Media upload ───────────────────────────────────────────────── */
 .mediaZone {
@@ -371,7 +349,7 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0,0,0,0.65);
   color: #fff;
   border: none;
   cursor: pointer;
@@ -471,7 +449,7 @@
 }
 @keyframes popIn {
   from { transform: scale(0.5); opacity: 0; }
-  to   { transform: scale(1); opacity: 1; }
+  to   { transform: scale(1);   opacity: 1; }
 }
 .successTitle {
   font-size: 26px;
@@ -484,15 +462,4 @@
   color: var(--muted);
   margin-bottom: 28px;
   line-height: 1.5;
-}
-.successRef {
-  display: inline-block;
-  background: rgba(15,118,110,0.08);
-  border: 1px solid rgba(15,118,110,0.2);
-  color: var(--color-primary);
-  font-weight: 700;
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 14px;
-  margin-bottom: 24px;
 }

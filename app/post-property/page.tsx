@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { LoadingBar } from "@/components/LoadingBar";
 import { KOTA_AREAS, PROPERTY_TYPES, COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS } from "@/lib/constants";
 import styles from "./styles.module.css";
@@ -28,24 +27,9 @@ type Form = {
   coachingHub: string;
   features: string[];
   description: string;
+  ownerName: string;
+  ownerPhone: string;
 };
-
-type Unit = {
-  label: string;
-  capacity: number;
-  price_per_month: string;
-  deposit_amount: string;
-  total_count: number;
-  available_count: number;
-  has_ac: boolean;
-  has_cooler: boolean;
-  attached_bath: boolean;
-  meals_included: boolean;
-};
-
-function emptyUnit(): Unit {
-  return { label: "", capacity: 1, price_per_month: "", deposit_amount: "", total_count: 1, available_count: 1, has_ac: false, has_cooler: false, attached_bath: false, meals_included: false };
-}
 
 function uploadFile(url: string, file: File, onProgress: (p: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -63,16 +47,15 @@ function uploadFile(url: string, file: File, onProgress: (p: number) => void): P
   });
 }
 
-export default function PostPropertyPage() {
-  const router = useRouter();
+export default function PostPropertyPublicPage() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<Form>({
     type: "rent", ptype: "Flat", loc: "", bhk: 1, baths: 1,
     price: "", deposit: "", sqft: "", furnishing: "", gender: "any",
     meals: false, availFrom: "", minStay: "", floorNum: "", totalFloors: "",
     parking: false, wifi: false, attachedBath: false, coachingHub: "", features: [], description: "",
+    ownerName: "", ownerPhone: "",
   });
-  const [units, setUnits] = useState<Unit[]>([]);
   const [photos, setPhotos] = useState<File[]>([]);
   const [videos, setVideos] = useState<File[]>([]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -86,11 +69,6 @@ export default function PostPropertyPage() {
   const photoRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
-  // Cleanup object URLs on unmount
-  const photoUrlsRef = useRef<string[]>([]);
-  photoUrlsRef.current = photoUrls;
-  useEffect(() => () => { photoUrlsRef.current.forEach((u) => URL.revokeObjectURL(u)); }, []);
-
   function set<K extends keyof Form>(k: K, v: Form[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -99,13 +77,6 @@ export default function PostPropertyPage() {
   const needsBHK = !["Shop", "Plot"].includes(form.ptype);
   const needsGender = ["Hostel", "PG"].includes(form.ptype);
   const needsMeals = ["Hostel", "PG"].includes(form.ptype);
-  const supportsUnits = ["Hostel", "PG", "Room", "Flat", "House"].includes(form.ptype) && isRent;
-
-  function addUnit() { setUnits((u) => [...u, emptyUnit()]); }
-  function removeUnit(i: number) { setUnits((u) => u.filter((_, j) => j !== i)); }
-  function setUnit<K extends keyof Unit>(i: number, k: K, v: Unit[K]) {
-    setUnits((u) => u.map((unit, j) => j === i ? { ...unit, [k]: v } : unit));
-  }
 
   function addPhotos(fl: FileList | null) {
     if (!fl) return;
@@ -145,34 +116,41 @@ export default function PostPropertyPage() {
     setErrors(e);
     return !Object.keys(e).length;
   }
+  function validateStep3() {
+    if (videos.length === 0) {
+      setErrors({ videos: "At least 1 video is required" });
+      return false;
+    }
+    return true;
+  }
 
   async function handleSubmit() {
-    if (videos.length === 0) {
-      setErrors({ videos: "At least 1 video is required — tap the video zone above" });
-      return;
+    const e: Record<string, string> = {};
+    if (!form.ownerName.trim()) e.ownerName = "Enter your name";
+    if (!form.ownerPhone.trim() || !/^\d{10}$/.test(form.ownerPhone.trim())) {
+      e.ownerPhone = "Enter a valid 10-digit phone number";
     }
+    if (Object.keys(e).length) { setErrors(e); return; }
+
     setUploading(true);
     setUploadPct(0);
     setSubmitErr("");
 
     try {
-      const token = localStorage.getItem("prop100_dealer_token");
-      if (!token) { router.replace("/dealer/login"); return; }
-
       const allFiles = [
         ...photos.map((f) => ({ name: f.name, type: f.type, category: "photo" as const })),
         ...videos.map((f) => ({ name: f.name, type: f.type, category: "video" as const })),
       ];
 
-      setUploadMsg("Preparing upload...");
-      const prepRes = await fetch("/api/dealer/property/prepare-upload", {
+      setUploadMsg("Preparing upload…");
+      const prepRes = await fetch("/api/public/prepare-upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files: allFiles }),
       });
       if (!prepRes.ok) {
         const d = await prepRes.json().catch(() => ({}));
-        throw new Error(d.error || "Failed to prepare upload. Check Supabase storage setup.");
+        throw new Error(d.error || "Failed to prepare upload.");
       }
       const { files: uploadUrls } = await prepRes.json();
 
@@ -193,12 +171,14 @@ export default function PostPropertyPage() {
       }
 
       setUploadPct(92);
-      setUploadMsg("Saving property…");
+      setUploadMsg("Saving your listing…");
 
-      const res = await fetch("/api/dealer/property", {
+      const res = await fetch("/api/public/post-property", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ownerName: form.ownerName.trim(),
+          ownerPhone: form.ownerPhone.trim(),
           type: form.type,
           ptype: form.ptype,
           loc: form.loc,
@@ -223,18 +203,12 @@ export default function PostPropertyPage() {
           description: form.description,
           photoPaths,
           videoPaths,
-          units: units.filter((u) => u.label.trim() && Number(u.price_per_month) > 0).map((u, i) => ({
-            ...u,
-            price_per_month: Number(u.price_per_month),
-            deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
-            sort_order: i,
-          })),
         }),
       });
 
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || "Failed to save property");
+        throw new Error(d.error || "Failed to save listing");
       }
 
       setUploadPct(100);
@@ -245,30 +219,44 @@ export default function PostPropertyPage() {
     }
   }
 
+  const STEP_LABELS = ["Property", "Pricing", "Photos", "Contact"];
+
   /* ── Success screen ─────────────────────────────────────────── */
   if (done) {
     return (
       <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
         <div style={{ background: "var(--dark)", color: "#fff" }}>
           <div style={{ maxWidth: 520, margin: "0 auto", padding: "0 16px", height: 54, display: "flex", alignItems: "center" }}>
-            <span style={{ fontWeight: 800, fontSize: 16 }}>Prop<span style={{ color: "var(--red)" }}>100</span></span>
+            <span style={{ fontWeight: 800, fontSize: 16 }}>Prop<span style={{ color: "var(--color-primary)" }}>100</span></span>
           </div>
         </div>
         <div style={{ maxWidth: 520, margin: "0 auto", padding: "16px 16px 0" }}>
           <div className={styles.success}>
             <div className={styles.successIcon}>🎉</div>
-            <div className={styles.successTitle}>Property Submitted!</div>
+            <div className={styles.successTitle}>Listing Submitted!</div>
             <div className={styles.successSub}>
-              Bhavya will review your listing and approve it shortly.
-              You&apos;ll start getting leads once it&apos;s live on the site.
+              Our team will review your property and get it live within 24 hours.
+              We&apos;ll contact you on <strong>{form.ownerPhone}</strong> once it&apos;s approved.
             </div>
-            <button
-              onClick={() => router.replace("/dealer")}
-              className={styles.btnNext}
-              style={{ width: "100%" }}
+            <a
+              href="/"
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "15px",
+                border: "none",
+                borderRadius: 12,
+                background: "var(--color-primary)",
+                color: "#fff",
+                fontSize: 16,
+                fontWeight: 700,
+                textAlign: "center",
+                textDecoration: "none",
+                boxShadow: "0 4px 14px rgba(15,118,110,0.35)",
+              }}
             >
-              Back to Dashboard
-            </button>
+              Back to Home
+            </a>
           </div>
         </div>
       </div>
@@ -284,12 +272,10 @@ export default function PostPropertyPage() {
       <div style={{ background: "var(--dark)", color: "#fff", position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ maxWidth: 520, margin: "0 auto", padding: "0 16px", height: 54, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <span style={{ fontWeight: 800, fontSize: 16 }}>Prop<span style={{ color: "var(--red)" }}>100</span></span>
-            <span style={{ color: "#7a8fa3", fontSize: 13, marginLeft: 8 }}>Post Property</span>
+            <span style={{ fontWeight: 800, fontSize: 16 }}>Prop<span style={{ color: "var(--color-primary)" }}>100</span></span>
+            <span style={{ color: "#7a8fa3", fontSize: 13, marginLeft: 8 }}>List Your Property</span>
           </div>
-          <button onClick={() => router.back()} style={{ color: "#7a8fa3", fontSize: 13, fontWeight: 600 }}>
-            Cancel
-          </button>
+          <a href="/" style={{ color: "#7a8fa3", fontSize: 13, fontWeight: 600 }}>Cancel</a>
         </div>
       </div>
 
@@ -297,24 +283,24 @@ export default function PostPropertyPage() {
 
         {/* Step progress */}
         <div className={styles.progress}>
-          {[1, 2, 3].map((s, i) => (
+          {[1, 2, 3, 4].map((s, i) => (
             <div key={s} className={styles.progressStep}>
               <div
                 className={`${styles.progressDot} ${step > s ? styles.progressDotDone : step === s ? styles.progressDotActive : ""}`}
               >
                 {step > s ? "✓" : s}
               </div>
-              {i < 2 && (
+              {i < 3 && (
                 <div className={`${styles.progressLine} ${step > s ? styles.progressLineDone : ""}`} />
               )}
             </div>
           ))}
         </div>
         <div style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginBottom: 14, fontWeight: 700 }}>
-          {step === 1 ? "Property Basics" : step === 2 ? "Pricing & Details" : "Photos & Video"}
+          {STEP_LABELS[step - 1]}
         </div>
 
-        {/* ═══════════ STEP 1 ═══════════ */}
+        {/* ═══════════ STEP 1 — Property Basics ═══════════ */}
         {step === 1 && (
           <>
             <div className={styles.section}>
@@ -368,48 +354,29 @@ export default function PostPropertyPage() {
                 <label className={styles.label} style={{ marginBottom: 10 }}>BHK</label>
                 <div className={styles.numBtns} style={{ marginBottom: 18 }}>
                   {[1, 2, 3, 4].map((n) => (
-                    <button key={n} className={`${styles.numBtn} ${form.bhk === n ? styles.numBtnActive : ""}`} onClick={() => set("bhk", n)}>
-                      {n}
-                    </button>
+                    <button key={n} className={`${styles.numBtn} ${form.bhk === n ? styles.numBtnActive : ""}`} onClick={() => set("bhk", n)}>{n}</button>
                   ))}
-                  <button
-                    className={`${styles.numBtn} ${form.bhk === 5 ? styles.numBtnActive : ""}`}
-                    style={{ width: "auto", padding: "0 14px" }}
-                    onClick={() => set("bhk", 5)}
-                  >
-                    4+
-                  </button>
+                  <button className={`${styles.numBtn} ${form.bhk === 5 ? styles.numBtnActive : ""}`} style={{ width: "auto", padding: "0 14px" }} onClick={() => set("bhk", 5)}>4+</button>
                 </div>
                 <label className={styles.label} style={{ marginBottom: 10 }}>Bathrooms</label>
                 <div className={styles.numBtns}>
                   {[1, 2, 3].map((n) => (
-                    <button key={n} className={`${styles.numBtn} ${form.baths === n ? styles.numBtnActive : ""}`} onClick={() => set("baths", n)}>
-                      {n}
-                    </button>
+                    <button key={n} className={`${styles.numBtn} ${form.baths === n ? styles.numBtnActive : ""}`} onClick={() => set("baths", n)}>{n}</button>
                   ))}
-                  <button
-                    className={`${styles.numBtn} ${form.baths === 4 ? styles.numBtnActive : ""}`}
-                    style={{ width: "auto", padding: "0 14px" }}
-                    onClick={() => set("baths", 4)}
-                  >
-                    3+
-                  </button>
+                  <button className={`${styles.numBtn} ${form.baths === 4 ? styles.numBtnActive : ""}`} style={{ width: "auto", padding: "0 14px" }} onClick={() => set("baths", 4)}>3+</button>
                 </div>
               </div>
             )}
 
             <div className={styles.navRow}>
-              <button
-                className={styles.btnNext}
-                onClick={() => { if (validateStep1()) setStep(2); }}
-              >
+              <button className={styles.btnNext} onClick={() => { if (validateStep1()) setStep(2); }}>
                 Next: Pricing & Details →
               </button>
             </div>
           </>
         )}
 
-        {/* ═══════════ STEP 2 ═══════════ */}
+        {/* ═══════════ STEP 2 — Pricing & Details ═══════════ */}
         {step === 2 && (
           <>
             <div className={styles.section}>
@@ -418,9 +385,7 @@ export default function PostPropertyPage() {
                 <>
                   <label className={styles.label}>Monthly Rent (₹)</label>
                   <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="e.g. 8000"
+                    type="number" inputMode="numeric" placeholder="e.g. 8000"
                     className={`${styles.input} ${errors.price ? styles.inputError : ""}`}
                     value={form.price}
                     onChange={(e) => { set("price", e.target.value); setErrors({}); }}
@@ -428,11 +393,8 @@ export default function PostPropertyPage() {
                   />
                   <label className={styles.label}>Security Deposit (₹)</label>
                   <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="e.g. 10000"
-                    className={styles.input}
-                    value={form.deposit}
+                    type="number" inputMode="numeric" placeholder="e.g. 10000"
+                    className={styles.input} value={form.deposit}
                     onChange={(e) => set("deposit", e.target.value)}
                   />
                 </>
@@ -440,9 +402,7 @@ export default function PostPropertyPage() {
                 <>
                   <label className={styles.label}>Sale Price (₹)</label>
                   <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="e.g. 4500000"
+                    type="number" inputMode="numeric" placeholder="e.g. 4500000"
                     className={`${styles.input} ${errors.price ? styles.inputError : ""}`}
                     value={form.price}
                     onChange={(e) => { set("price", e.target.value); setErrors({}); }}
@@ -456,11 +416,8 @@ export default function PostPropertyPage() {
               <div className={styles.sectionTitle}>Property Details</div>
               <label className={styles.label}>Area (sq ft) — optional</label>
               <input
-                type="number"
-                inputMode="numeric"
-                placeholder="e.g. 350"
-                className={styles.input}
-                value={form.sqft}
+                type="number" inputMode="numeric" placeholder="e.g. 350"
+                className={styles.input} value={form.sqft}
                 onChange={(e) => set("sqft", e.target.value)}
                 style={{ marginBottom: 14 }}
               />
@@ -483,25 +440,11 @@ export default function PostPropertyPage() {
               <div className={styles.inputRow}>
                 <div>
                   <label className={styles.label}>Floor No.</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="2"
-                    className={styles.input}
-                    value={form.floorNum}
-                    onChange={(e) => set("floorNum", e.target.value)}
-                  />
+                  <input type="number" inputMode="numeric" placeholder="2" className={styles.input} value={form.floorNum} onChange={(e) => set("floorNum", e.target.value)} />
                 </div>
                 <div>
                   <label className={styles.label}>Total Floors</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="5"
-                    className={styles.input}
-                    value={form.totalFloors}
-                    onChange={(e) => set("totalFloors", e.target.value)}
-                  />
+                  <input type="number" inputMode="numeric" placeholder="5" className={styles.input} value={form.totalFloors} onChange={(e) => set("totalFloors", e.target.value)} />
                 </div>
               </div>
             </div>
@@ -510,20 +453,9 @@ export default function PostPropertyPage() {
               <div className={styles.section}>
                 <div className={styles.sectionTitle}>Rental Details</div>
                 <label className={styles.label}>Available From</label>
-                <input
-                  type="date"
-                  className={styles.input}
-                  value={form.availFrom}
-                  onChange={(e) => set("availFrom", e.target.value)}
-                  style={{ marginBottom: 14 }}
-                />
+                <input type="date" className={styles.input} value={form.availFrom} onChange={(e) => set("availFrom", e.target.value)} style={{ marginBottom: 14 }} />
                 <label className={styles.label}>Minimum Stay</label>
-                <select
-                  className={styles.select}
-                  value={form.minStay}
-                  onChange={(e) => set("minStay", e.target.value)}
-                  style={{ marginBottom: 14 }}
-                >
+                <select className={styles.select} value={form.minStay} onChange={(e) => set("minStay", e.target.value)} style={{ marginBottom: 14 }}>
                   <option value="">No minimum</option>
                   <option value="1">1 month</option>
                   <option value="3">3 months</option>
@@ -531,27 +463,16 @@ export default function PostPropertyPage() {
                   <option value="12">12 months</option>
                 </select>
                 <label className={styles.label}>Nearest Coaching Hub</label>
-                <select
-                  className={styles.select}
-                  value={form.coachingHub}
-                  onChange={(e) => set("coachingHub", e.target.value)}
-                  style={{ marginBottom: needsGender ? 14 : 0 }}
-                >
+                <select className={styles.select} value={form.coachingHub} onChange={(e) => set("coachingHub", e.target.value)} style={{ marginBottom: needsGender ? 14 : 0 }}>
                   <option value="">Select coaching…</option>
                   {COACHING_HUBS.map((h) => <option key={h} value={h}>{h}</option>)}
                 </select>
                 {needsGender && (
                   <>
-                    <label className={styles.label} style={{ marginTop: 0 }}>Gender Preference</label>
+                    <label className={styles.label} style={{ marginTop: 14 }}>Gender Preference</label>
                     <div className={styles.optBtns} style={{ marginBottom: needsMeals ? 14 : 0 }}>
                       {[{ v: "boys", l: "Boys" }, { v: "girls", l: "Girls" }, { v: "any", l: "Any" }].map((o) => (
-                        <button
-                          key={o.v}
-                          className={`${styles.optBtn} ${form.gender === o.v ? styles.optBtnActive : ""}`}
-                          onClick={() => set("gender", o.v)}
-                        >
-                          {o.l}
-                        </button>
+                        <button key={o.v} className={`${styles.optBtn} ${form.gender === o.v ? styles.optBtnActive : ""}`} onClick={() => set("gender", o.v)}>{o.l}</button>
                       ))}
                     </div>
                   </>
@@ -608,92 +529,9 @@ export default function PostPropertyPage() {
               </div>
             </div>
 
-            {supportsUnits && (
-              <div className={styles.section}>
-                <div className={styles.sectionTitle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span>Room / Unit Types</span>
-                  <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: 12 }}>optional</span>
-                </div>
-                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.5 }}>
-                  Add different room types (e.g. Single AC, Double Cooler, 2BHK Portion). Customers can enquire about specific types.
-                </p>
-                {units.map((u, i) => (
-                  <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "14px", marginBottom: 12, background: "var(--bg)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>Room Type {i + 1}</span>
-                      <button onClick={() => removeUnit(i)} style={{ color: "var(--red)", fontSize: 18, lineHeight: 1, padding: "0 4px" }}>×</button>
-                    </div>
-                    <label className={styles.label}>Label (e.g. Single AC, Double Cooler)</label>
-                    <input
-                      type="text"
-                      className={styles.input}
-                      placeholder="e.g. Single with AC"
-                      value={u.label}
-                      onChange={(e) => setUnit(i, "label", e.target.value)}
-                      style={{ marginBottom: 10 }}
-                    />
-                    <div className={styles.inputRow}>
-                      <div>
-                        <label className={styles.label}>Monthly Rent (₹)</label>
-                        <input type="number" inputMode="numeric" className={styles.input} placeholder="8000" value={u.price_per_month} onChange={(e) => setUnit(i, "price_per_month", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className={styles.label}>Deposit (₹)</label>
-                        <input type="number" inputMode="numeric" className={styles.input} placeholder="10000" value={u.deposit_amount} onChange={(e) => setUnit(i, "deposit_amount", e.target.value)} />
-                      </div>
-                    </div>
-                    <div className={styles.inputRow} style={{ marginTop: 10 }}>
-                      <div>
-                        <label className={styles.label}>Persons/room</label>
-                        <div className={styles.numBtns}>
-                          {[1, 2, 3].map((n) => (
-                            <button key={n} className={`${styles.numBtn} ${u.capacity === n ? styles.numBtnActive : ""}`} onClick={() => setUnit(i, "capacity", n)}>{n}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className={styles.label}>Total rooms</label>
-                        <div className={styles.numBtns}>
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <button key={n} className={`${styles.numBtn} ${u.total_count === n ? styles.numBtnActive : ""}`} onClick={() => { setUnit(i, "total_count", n); setUnit(i, "available_count", Math.min(u.available_count, n)); }}>{n}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                      {[
-                        { k: "has_ac" as const, label: "AC" },
-                        { k: "has_cooler" as const, label: "Cooler" },
-                        { k: "attached_bath" as const, label: "Attached Bath" },
-                        { k: "meals_included" as const, label: "Meals Incl." },
-                      ].map(({ k, label }) => (
-                        <button
-                          key={k}
-                          className={`${styles.chip} ${u[k] ? styles.chipActive : ""}`}
-                          onClick={() => setUnit(i, k, !u[k])}
-                        >
-                          {u[k] ? "✓ " : ""}{label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <button
-                  onClick={addUnit}
-                  style={{
-                    width: "100%", border: "1.5px dashed var(--line)", borderRadius: 10, padding: "13px",
-                    fontSize: 14, fontWeight: 700, color: "var(--color-primary)", background: "rgba(15,118,110,0.04)",
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add Room Type
-                </button>
-              </div>
-            )}
-
             <div className={styles.section}>
               <div className={styles.sectionTitle}>Description</div>
-              <label className={styles.label}>Tell tenants what makes this special</label>
+              <label className={styles.label}>Tell us what makes this special</label>
               <textarea
                 className={styles.textarea}
                 placeholder="e.g. Well-maintained flat near coaching, 24×7 water, gated society…"
@@ -705,20 +543,14 @@ export default function PostPropertyPage() {
 
             <div className={styles.navRow}>
               <button className={styles.btnBack} onClick={() => { setErrors({}); setStep(1); }}>← Back</button>
-              <button
-                className={styles.btnNext}
-                onClick={() => { if (validateStep2()) setStep(3); }}
-              >
-                Next: Add Media →
-              </button>
+              <button className={styles.btnNext} onClick={() => { if (validateStep2()) setStep(3); }}>Next: Add Media →</button>
             </div>
           </>
         )}
 
-        {/* ═══════════ STEP 3 ═══════════ */}
+        {/* ═══════════ STEP 3 — Photos & Video ═══════════ */}
         {step === 3 && !uploading && (
           <>
-            {/* Photos */}
             <div className={styles.section}>
               <div className={styles.sectionTitle}>
                 Photos{" "}
@@ -731,14 +563,7 @@ export default function PostPropertyPage() {
                 <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)", marginBottom: 3 }}>Add Photos</div>
                 <div style={{ fontSize: 13, color: "var(--muted)" }}>Tap to choose · JPEG, PNG · Multiple OK</div>
               </div>
-              <input
-                ref={photoRef}
-                type="file"
-                accept="image/*"
-                multiple
-                style={{ display: "none" }}
-                onChange={(e) => addPhotos(e.target.files)}
-              />
+              <input ref={photoRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => addPhotos(e.target.files)} />
               {photoUrls.length > 0 && (
                 <div className={styles.mediaGrid}>
                   {photoUrls.map((url, i) => (
@@ -751,11 +576,10 @@ export default function PostPropertyPage() {
               )}
             </div>
 
-            {/* Video — required */}
             <div className={styles.section}>
               <div className={styles.sectionTitle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span>Video Tour</span>
-                <span style={{ color: "var(--red)", fontWeight: 800, fontSize: 11 }}>REQUIRED</span>
+                <span style={{ color: "var(--color-danger)", fontWeight: 800, fontSize: 11, textTransform: "uppercase" }}>REQUIRED</span>
               </div>
               <div
                 className={`${styles.mediaZone} ${errors.videos ? styles.mediaZoneRequired : ""}`}
@@ -765,44 +589,79 @@ export default function PostPropertyPage() {
                 <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)", marginBottom: 3 }}>
                   {videos.length === 0 ? "Add Video Tour" : `${videos.length} video${videos.length > 1 ? "s" : ""} selected — tap to add more`}
                 </div>
-                <div style={{ fontSize: 13, color: errors.videos ? "var(--red)" : "var(--muted)", fontWeight: errors.videos ? 700 : 400 }}>
+                <div style={{ fontSize: 13, color: errors.videos ? "var(--color-danger)" : "var(--muted)", fontWeight: errors.videos ? 700 : 400 }}>
                   {errors.videos || "MP4, MOV, WEBM · At least 1 required"}
                 </div>
               </div>
-              <input
-                ref={videoRef}
-                type="file"
-                accept="video/*"
-                multiple
-                style={{ display: "none" }}
-                onChange={(e) => addVideos(e.target.files)}
-              />
+              <input ref={videoRef} type="file" accept="video/*" multiple style={{ display: "none" }} onChange={(e) => addVideos(e.target.files)} />
               {videoNames.length > 0 && (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                   {videoNames.map((name, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        background: "rgba(15,118,110,0.04)",
-                        border: "1px solid rgba(15,118,110,0.18)",
-                        borderRadius: 10, padding: "10px 12px",
-                      }}
-                    >
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(15,118,110,0.04)", border: "1px solid rgba(15,118,110,0.18)", borderRadius: 10, padding: "10px 12px" }}>
                       <span style={{ fontSize: 20 }}>🎬</span>
-                      <span style={{ flex: 1, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {name}
-                      </span>
-                      <button
-                        onClick={() => removeVideo(i)}
-                        style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}
-                      >
-                        ×
-                      </button>
+                      <span style={{ flex: 1, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                      <button onClick={() => removeVideo(i)} style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}>×</button>
                     </div>
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className={styles.navRow}>
+              <button className={styles.btnBack} onClick={() => { setErrors({}); setStep(2); }}>← Back</button>
+              <button className={styles.btnNext} onClick={() => { if (validateStep3()) setStep(4); }}>Next: Your Contact →</button>
+            </div>
+          </>
+        )}
+
+        {/* ═══════════ STEP 4 — Owner Contact ═══════════ */}
+        {step === 4 && !uploading && (
+          <>
+            <div className={styles.section}>
+              <div className={styles.sectionTitle}>Your Contact Details</div>
+              <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5, marginBottom: 16 }}>
+                We&apos;ll contact you when your listing goes live. Potential tenants/buyers reach you through our platform.
+              </p>
+              <label className={styles.label}>Your Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Ramesh Kumar"
+                className={`${styles.input} ${errors.ownerName ? styles.inputError : ""}`}
+                value={form.ownerName}
+                onChange={(e) => { set("ownerName", e.target.value); setErrors((err) => ({ ...err, ownerName: "" })); }}
+                style={{ marginBottom: 14 }}
+              />
+              {errors.ownerName && <div className={styles.errorMsg} style={{ marginTop: -10, marginBottom: 10 }}>⚠ {errors.ownerName}</div>}
+
+              <label className={styles.label}>Mobile Number</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                <span style={{ padding: "13px 12px", border: "1.5px solid var(--line)", borderRight: "none", borderRadius: "10px 0 0 10px", fontSize: 16, background: "var(--bg)", color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                  +91
+                </span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="10-digit number"
+                  className={`${styles.input} ${errors.ownerPhone ? styles.inputError : ""}`}
+                  style={{ borderRadius: "0 10px 10px 0", borderLeft: "none" }}
+                  value={form.ownerPhone}
+                  onChange={(e) => { set("ownerPhone", e.target.value.replace(/\D/g, "").slice(0, 10)); setErrors((err) => ({ ...err, ownerPhone: "" })); }}
+                />
+              </div>
+              {errors.ownerPhone && <div className={styles.errorMsg}>⚠ {errors.ownerPhone}</div>}
+            </div>
+
+            <div className={styles.section} style={{ background: "rgba(15,118,110,0.04)", border: "1px solid rgba(15,118,110,0.15)" }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 24, flexShrink: 0 }}>🔒</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>Your number stays private</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
+                    Interested people contact you through Prop100. Your personal number is never shown publicly.
+                  </div>
+                </div>
+              </div>
             </div>
 
             {submitErr && (
@@ -812,9 +671,9 @@ export default function PostPropertyPage() {
             )}
 
             <div className={styles.navRow}>
-              <button className={styles.btnBack} onClick={() => { setErrors({}); setStep(2); }}>← Back</button>
+              <button className={styles.btnBack} onClick={() => { setErrors({}); setStep(3); }}>← Back</button>
               <button className={styles.btnNext} onClick={handleSubmit}>
-                Submit Property ✓
+                Submit Listing ✓
               </button>
             </div>
           </>
@@ -825,9 +684,7 @@ export default function PostPropertyPage() {
           <div className={styles.section} style={{ marginTop: 8 }}>
             <div className={styles.uploadOverlay}>
               <div style={{ fontSize: 42, marginBottom: 10 }}>⬆️</div>
-              <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)", marginBottom: 4 }}>
-                Uploading…
-              </div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)", marginBottom: 4 }}>Uploading…</div>
               <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 2 }}>{uploadMsg}</div>
               <div className={styles.uploadBarTrack}>
                 <div className={styles.uploadBarFill} style={{ width: `${uploadPct}%` }} />

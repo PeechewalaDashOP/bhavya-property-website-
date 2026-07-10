@@ -16,6 +16,8 @@ create table if not exists dealers (
   years            int default 0,
   rating           numeric default 4.5,
   is_active        boolean not null default true
+  -- is_active=false + role='owner': auto-created for public /post-property submissions
+  -- (hidden from public dealer listings; property still has a valid dealer_id FK)
 );
 
 -- -------------------------------------------------------------------
