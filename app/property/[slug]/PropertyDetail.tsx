@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PropertyFull, PropertyUnit } from "@/lib/types";
 import { AREA_COORDS, PTYPE_ICONS } from "@/lib/constants";
 import { fmt } from "@/lib/format";
+import { CATEGORY_AXES, AXIS_OPTIONS, AXIS_LABELS, AxisKey, chipLabel } from "@/lib/variantConfig";
 import styles from "./styles.module.css";
 
 /* ─── Haversine distance (km) ─────────────────────────────── */
@@ -130,7 +131,6 @@ function LeadSheet({
   const [dealerPhone, setDealerPhone] = useState("");
   const [ref, setRef] = useState("");
 
-  // Reset to form when sheet opens
   useEffect(() => {
     if (open) { setPhase("form"); setError(""); setOtp(""); }
   }, [open]);
@@ -143,7 +143,6 @@ function LeadSheet({
   }
 
   // OTP temporarily disabled — submits directly until WhatsApp Business API is approved.
-  // To revert: restore this function to call /api/otp/send and setPhase("otp").
   async function submitForm() {
     const cleanPhone = phone.replace(/\D/g, "");
     if (name.trim().length < 2) { setError("Enter your name (at least 2 characters)"); return; }
@@ -237,7 +236,6 @@ function LeadSheet({
         <div className={styles.sheetHandle} />
         <div className={styles.sheetBody}>
 
-          {/* Form phase */}
           {phase === "form" && (
             <>
               <div className={styles.sheetTitle}>Get Dealer Contact</div>
@@ -325,7 +323,6 @@ function LeadSheet({
             </>
           )}
 
-          {/* OTP phase */}
           {phase === "otp" && (
             <>
               <div className={styles.sheetTitle}>Verify Your Phone</div>
@@ -367,7 +364,6 @@ function LeadSheet({
             </>
           )}
 
-          {/* Reveal phase */}
           {phase === "done" && (
             <>
               <div className={styles.sheetTitle}>Contact Dealer</div>
@@ -415,37 +411,173 @@ function LeadSheet({
   );
 }
 
+/* ─── Variant helpers ─────────────────────────────────────────── */
+
+function orderedAxisValues(axis: AxisKey, units: PropertyUnit[]): string[] {
+  const present = new Set(
+    units
+      .map((u) => u.attributes?.[axis])
+      .filter((v) => v !== undefined && v !== null)
+      .map((v) => String(v))
+  );
+  const opts = AXIS_OPTIONS[axis];
+  if (opts.length > 0) {
+    return opts.filter((o) => present.has(o.value)).map((o) => o.value);
+  }
+  // bhk — sort numerically
+  return Array.from(present).sort((a, b) => Number(a) - Number(b));
+}
+
+function initSel(
+  units: PropertyUnit[],
+  axes: AxisKey[],
+  params: Record<string, string>
+): Record<string, string> {
+  if (axes.length === 0 || units.length === 0) return {};
+
+  // Try URL params — if all axes present AND match a real unit, use them
+  const fromUrl: Record<string, string> = {};
+  for (const ax of axes) {
+    if (params[ax]) fromUrl[ax] = params[ax];
+  }
+  if (Object.keys(fromUrl).length === axes.length) {
+    const match = units.find((u) =>
+      axes.every((ax) => String(u.attributes?.[ax] ?? "") === fromUrl[ax])
+    );
+    if (match) return fromUrl;
+  }
+
+  // Default: cheapest available unit; fall back to cheapest overall
+  const candidates = units.filter((u) => (u.available_count ?? 0) > 0);
+  const source = candidates.length > 0 ? candidates : units;
+  const best = source.reduce((a, b) =>
+    (a.price_per_month ?? 0) <= (b.price_per_month ?? 0) ? a : b
+  );
+  const result: Record<string, string> = {};
+  for (const ax of axes) {
+    const v = best.attributes?.[ax];
+    if (v !== undefined && v !== null) result[ax] = String(v);
+  }
+  return result;
+}
+
+function resolveUnit(
+  units: PropertyUnit[],
+  sel: Record<string, string>,
+  axes: AxisKey[]
+): PropertyUnit | null {
+  if (units.length === 0) return null;
+  if (axes.length === 0) return units[0];
+  return (
+    units.find((u) =>
+      axes.every(
+        (ax) => sel[ax] !== undefined && String(u.attributes?.[ax] ?? "") === sel[ax]
+      )
+    ) ?? null
+  );
+}
+
+function chipEnabled(
+  axis: string,
+  value: string,
+  sel: Record<string, string>,
+  axes: AxisKey[],
+  units: PropertyUnit[]
+): boolean {
+  return units.some((u) => {
+    if (String(u.attributes?.[axis] ?? "") !== value) return false;
+    for (const oa of axes) {
+      if (oa === axis || !sel[oa]) continue;
+      if (String(u.attributes?.[oa] ?? "") !== sel[oa]) return false;
+    }
+    return true;
+  });
+}
+
+function selectChip(
+  axis: string,
+  value: string,
+  current: Record<string, string>,
+  axes: AxisKey[],
+  units: PropertyUnit[]
+): Record<string, string> {
+  const next = { ...current, [axis]: value };
+  for (const oa of axes) {
+    if (oa === axis || !next[oa]) continue;
+    const valid = units.some(
+      (u) =>
+        String(u.attributes?.[axis] ?? "") === value &&
+        String(u.attributes?.[oa] ?? "") === next[oa]
+    );
+    if (!valid) delete next[oa];
+  }
+  return next;
+}
+
+function availInfo(count: number): { text: string; cls: string } {
+  if (count === 0) return { text: "Full — no vacancy", cls: styles.availFull };
+  if (count <= 2) return { text: `⚡ Only ${count} left`, cls: styles.availFew };
+  return { text: `✓ ${count} available`, cls: styles.availOk };
+}
+
+function daysSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
 /* ─── Main component ─────────────────────────────────────────── */
 export default function PropertyDetail({
   property,
   mapsKey,
+  initialParams = {},
 }: {
   property: PropertyFull;
   mapsKey: string;
+  initialParams?: Record<string, string>;
 }) {
-  const [heroIdx, setHeroIdx] = useState(0);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [selectedUnit, setSelectedUnit] = useState<PropertyUnit | null>(null);
-
   const gallery = property.gallery?.length ? property.gallery : property.img ? [property.img] : [];
-  const hasGallery = gallery.length > 0;
   const videos = property.videos ?? [];
   const units = property.property_units ?? [];
   const dealer = property.dealers;
 
-  // Effective lat/lng: use property coords if set, else area fallback
+  const axes: AxisKey[] = CATEGORY_AXES[property.ptype] ?? [];
+  const showSelector = units.length >= 2 && axes.length > 0;
+
+  const [sel, setSel] = useState<Record<string, string>>(() =>
+    initSel(units, axes, initialParams)
+  );
+  const [heroIdx, setHeroIdx] = useState(0);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const selectedUnit = resolveUnit(units, sel, axes);
+
+  // Swap gallery when selected unit has its own photos
+  const displayGallery =
+    selectedUnit?.unit_photos?.length ? selectedUnit.unit_photos : gallery;
+  const hasGallery = displayGallery.length > 0;
+
+  // Reset hero image when the gallery source changes
+  useEffect(() => { setHeroIdx(0); }, [selectedUnit?.id]);
+
   const propLat = property.lat ?? AREA_COORDS[property.loc]?.lat ?? null;
   const propLng = property.lng ?? AREA_COORDS[property.loc]?.lng ?? null;
   const showDistWidget = Boolean(mapsKey && propLat && propLng);
 
-  const displayPrice = property.type === "rent"
-    ? `${fmt(property.rent_per_month ?? property.price)}/month`
-    : fmt(property.price);
+  const openSheet = useCallback(() => { setSheetOpen(true); }, []);
 
-  const openSheet = useCallback((unit?: PropertyUnit) => {
-    setSelectedUnit(unit ?? null);
-    setSheetOpen(true);
-  }, []);
+  // Price/deposit: prefer selected unit; fall back to property-level
+  const displayPrice = selectedUnit
+    ? selectedUnit.price_per_month
+    : property.type === "rent"
+    ? (property.rent_per_month ?? property.price)
+    : property.price;
+
+  const displayDeposit = selectedUnit?.deposit_amount ?? property.deposit_amount;
+
+  // Availability — only show when we have a concrete selected unit or exactly 1 unit
+  const availUnit = selectedUnit ?? (units.length === 1 ? units[0] : null);
+  const avail = availUnit !== null ? availInfo(availUnit.available_count ?? 0) : null;
+  const freshDays = availUnit ? daysSince(availUnit.last_confirmed_at) : null;
 
   const amenities = [
     property.parking_available && { icon: "🚗", label: "Parking" },
@@ -456,9 +588,55 @@ export default function PropertyDetail({
     property.furnishing_status === "semi-furnished" && { icon: "🛋️", label: "Semi-Furnished" },
   ].filter(Boolean) as { icon: string; label: string }[];
 
-  function fmtDate(iso: string | null) {
+  function fmtDateStr(iso: string | null) {
     if (!iso) return null;
     return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+  }
+
+  const ctaLabel = availUnit?.available_count === 0
+    ? "Enquire for Updates"
+    : selectedUnit
+    ? `Get Contact — ${selectedUnit.label}`
+    : "Get Dealer Contact";
+
+  // Variant chip selector — rendered in both mobile card and desktop buy box
+  function renderVariantSelector() {
+    return (
+      <div className={styles.variantSection}>
+        {axes.map((ax) => {
+          const vals = orderedAxisValues(ax, units);
+          return (
+            <div key={ax} className={styles.variantAxis}>
+              <div className={styles.axisLabel}>
+                {AXIS_LABELS[ax]}
+                {sel[ax] && (
+                  <span className={styles.axisSelected}>{chipLabel(ax, sel[ax])}</span>
+                )}
+              </div>
+              <div className={styles.chipRow}>
+                {vals.map((v) => {
+                  const isActive = sel[ax] === v;
+                  const enabled = chipEnabled(ax, v, sel, axes, units);
+                  return (
+                    <button
+                      key={v}
+                      className={`${styles.variantChip} ${isActive ? styles.variantChipActive : ""} ${!enabled ? styles.variantChipDisabled : ""}`}
+                      onClick={() => {
+                        if (enabled) setSel(selectChip(ax, v, sel, axes, units));
+                      }}
+                      disabled={!enabled}
+                      aria-pressed={isActive}
+                    >
+                      {chipLabel(ax, v)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -468,7 +646,7 @@ export default function PropertyDetail({
         <div className={styles.topNavInner}>
           <Link href="/" className={styles.backBtn} aria-label="Back">←</Link>
           <span className={styles.navLogo}>
-            Prop<span style={{ color: "var(--red)" }}>100</span>
+            Prop<span style={{ color: "var(--color-primary)" }}>100</span>
           </span>
           <span style={{ fontSize: 13, color: "#7a8fa3", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginLeft: 4 }}>
             {property.ptype} · {property.loc}
@@ -476,230 +654,302 @@ export default function PropertyDetail({
         </div>
       </div>
 
-      {/* Gallery */}
-      {hasGallery ? (
-        <>
-          <img
-            className={styles.galleryHero}
-            src={gallery[heroIdx]}
-            alt={property.title}
-          />
-          {gallery.length > 1 && (
-            <div className={styles.thumbStrip}>
-              {gallery.map((src, i) => (
-                <div
-                  key={i}
-                  className={`${styles.thumb} ${i === heroIdx ? styles.thumbActive : ""}`}
-                  onClick={() => setHeroIdx(i)}
-                >
-                  <img src={src} alt="" />
+      {/* Two-column layout wrapper */}
+      <div className={styles.layout}>
+        {/* ── Left column: gallery + content ── */}
+        <div className={styles.leftCol}>
+
+          {/* Gallery */}
+          {hasGallery ? (
+            <>
+              <img
+                className={styles.galleryHero}
+                src={displayGallery[heroIdx]}
+                alt={property.title}
+              />
+              {displayGallery.length > 1 && (
+                <div className={styles.thumbStrip}>
+                  {displayGallery.map((src, i) => (
+                    <div
+                      key={i}
+                      className={`${styles.thumb} ${i === heroIdx ? styles.thumbActive : ""}`}
+                      onClick={() => setHeroIdx(i)}
+                    >
+                      <img src={src} alt="" />
+                    </div>
+                  ))}
                 </div>
+              )}
+            </>
+          ) : (
+            <div className={styles.galleryPlaceholder}>
+              {PTYPE_ICONS[property.ptype] ?? "🏠"}
+            </div>
+          )}
+
+          {/* Video links */}
+          {videos.length > 0 && (
+            <div className={styles.videoLinks}>
+              {videos.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer" className={styles.videoLink}>
+                  🎬 Video tour {videos.length > 1 ? i + 1 : ""}
+                </a>
               ))}
             </div>
           )}
-        </>
-      ) : (
-        <div className={styles.galleryPlaceholder}>
-          {PTYPE_ICONS[property.ptype] ?? "🏠"}
-        </div>
-      )}
 
-      {/* Video links */}
-      {videos.length > 0 && (
-        <div className={styles.videoLinks}>
-          {videos.map((url, i) => (
-            <a key={i} href={url} target="_blank" rel="noreferrer" className={styles.videoLink}>
-              🎬 Video tour {videos.length > 1 ? i + 1 : ""}
-            </a>
-          ))}
-        </div>
-      )}
-
-      {/* Header card */}
-      <div className={styles.card}>
-        <div className={styles.priceLine}>
-          <span className={styles.priceMain}>{fmt(property.rent_per_month ?? property.price)}</span>
-          {property.type === "rent" && <span className={styles.pricePer}>/month</span>}
-          <span className={styles.typeBadge}>{property.type === "rent" ? "For Rent" : "For Sale"}</span>
-        </div>
-        {property.type === "rent" && property.deposit_amount && (
-          <div className={styles.priceDeposit}>
-            Deposit: ₹{property.deposit_amount.toLocaleString("en-IN")}
+          {/* Header card */}
+          <div className={styles.card}>
+            <div className={styles.priceLine}>
+              <span className={styles.priceMain}>{fmt(displayPrice)}</span>
+              {property.type === "rent" && <span className={styles.pricePer}>/month</span>}
+              <span className={styles.typeBadge}>{property.type === "rent" ? "For Rent" : "For Sale"}</span>
+            </div>
+            {property.type === "rent" && displayDeposit && (
+              <div className={styles.priceDeposit}>
+                Deposit: ₹{displayDeposit.toLocaleString("en-IN")}
+              </div>
+            )}
+            <div className={styles.propTitle}>{property.title}</div>
+            <div className={styles.propLoc}>
+              📍 {property.loc}, Kota
+              {property.nearest_coaching_hub && ` · 🎓 Near ${property.nearest_coaching_hub}`}
+            </div>
+            <div className={styles.statRow}>
+              {/* Show BHK from selected unit attrs when selector is hidden (single-unit flat) */}
+              {!showSelector && availUnit?.attributes?.bhk ? (
+                <span className={styles.stat}><b>{availUnit.attributes.bhk}</b> BHK</span>
+              ) : property.bhk > 0 && !showSelector ? (
+                <span className={styles.stat}><b>{property.bhk}</b> BHK</span>
+              ) : null}
+              {property.baths > 0 && <span className={styles.stat}><b>{property.baths}</b> Bath</span>}
+              {property.sqft && property.sqft > 0 && (
+                <span className={styles.stat}><b>{property.sqft.toLocaleString("en-IN")}</b> sqft</span>
+              )}
+              {property.floor_number != null && (
+                <span className={styles.stat}>
+                  Floor <b>{property.floor_number}</b>
+                  {property.total_floors ? `/${property.total_floors}` : ""}
+                </span>
+              )}
+            </div>
+            <div>
+              {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified</span>}
+              {property.is_featured && <span className={`${styles.badge} ${styles.badgeFeatured}`}>⭐ Featured</span>}
+            </div>
           </div>
-        )}
-        <div className={styles.propTitle}>{property.title}</div>
-        <div className={styles.propLoc}>
-          📍 {property.loc}, Kota
-          {property.nearest_coaching_hub && ` · 🎓 Near ${property.nearest_coaching_hub}`}
-        </div>
-        <div className={styles.statRow}>
-          {property.bhk > 0 && <span className={styles.stat}><b>{property.bhk}</b> BHK</span>}
-          {property.baths > 0 && <span className={styles.stat}><b>{property.baths}</b> Bath</span>}
-          {property.sqft && property.sqft > 0 && (
-            <span className={styles.stat}><b>{property.sqft.toLocaleString("en-IN")}</b> sqft</span>
+
+          {/* Variant selector — mobile only (desktop version lives in rightCol) */}
+          {showSelector && (
+            <div className={`${styles.card} ${styles.mobileOnly}`}>
+              <div className={styles.sectionTitle}>Select Room Type</div>
+              {renderVariantSelector()}
+              {avail && (
+                <span className={`${styles.availBadge} ${avail.cls}`} style={{ marginTop: 16 }}>
+                  {avail.text}
+                </span>
+              )}
+              {freshDays !== null && (
+                <div className={styles.freshness}>
+                  {freshDays === 0
+                    ? "Availability confirmed today"
+                    : `Availability confirmed ${freshDays} day${freshDays !== 1 ? "s" : ""} ago`}
+                </div>
+              )}
+            </div>
           )}
-          {property.floor_number != null && (
-            <span className={styles.stat}>
-              Floor <b>{property.floor_number}</b>
-              {property.total_floors ? `/${property.total_floors}` : ""}
-            </span>
+
+          {/* Availability for single-unit (no selector) — mobile only */}
+          {!showSelector && avail && (
+            <div className={`${styles.card} ${styles.mobileOnly}`}>
+              <span className={`${styles.availBadge} ${avail.cls}`}>{avail.text}</span>
+              {freshDays !== null && (
+                <div className={styles.freshness} style={{ marginTop: 6 }}>
+                  {freshDays === 0
+                    ? "Availability confirmed today"
+                    : `Availability confirmed ${freshDays} day${freshDays !== 1 ? "s" : ""} ago`}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Amenities */}
+          {amenities.length > 0 && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>Amenities</div>
+              <div className={styles.amenityGrid}>
+                {amenities.map((a) => (
+                  <div key={a.label} className={styles.amenity}>
+                    <span className={styles.amenityIcon}>{a.icon}</span>
+                    {a.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Features */}
+          {property.features?.length > 0 && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>Features</div>
+              <div className={styles.chips}>
+                {property.features.map((f) => (
+                  <span key={f} className={styles.chip}>{f}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Description */}
+          {property.description && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>About This Property</div>
+              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                {property.description}
+              </p>
+            </div>
+          )}
+
+          {/* Rental details */}
+          {property.type === "rent" && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>Rental Details</div>
+              <div className={styles.detailList}>
+                {property.available_from && (
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Available From</span>
+                    <span className={styles.detailValue}>{fmtDateStr(property.available_from)}</span>
+                  </div>
+                )}
+                {property.min_stay_months && (
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Minimum Stay</span>
+                    <span className={styles.detailValue}>{property.min_stay_months} month{property.min_stay_months > 1 ? "s" : ""}</span>
+                  </div>
+                )}
+                {property.gender_preference && property.gender_preference !== "any" && (
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Gender Preference</span>
+                    <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>{property.gender_preference}</span>
+                  </div>
+                )}
+                {property.furnishing_status && (
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Furnishing</span>
+                    <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>{property.furnishing_status.replace("-", " ")}</span>
+                  </div>
+                )}
+                {property.nearest_coaching_hub && (
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Nearest Coaching</span>
+                    <span className={styles.detailValue}>{property.nearest_coaching_hub}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Distance calculator */}
+          {showDistWidget && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>Distance from Your Location</div>
+              <DistanceWidget lat={propLat!} lng={propLng!} mapsKey={mapsKey} />
+            </div>
+          )}
+
+          {/* Dealer info */}
+          {dealer && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>Listed By</div>
+              <div className={styles.dealerRow}>
+                <div className={styles.dealerAvatar}>{dealer.name[0]}</div>
+                <div>
+                  <div className={styles.dealerName}>{dealer.name}</div>
+                  <div className={styles.dealerRole}>{dealer.role}</div>
+                  <div className={styles.dealerStats}>
+                    <span><b>{dealer.years}</b> yrs exp</span>
+                    <span><b>⭐{dealer.rating}</b> rating</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
-        <div>
-          {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified</span>}
-          {property.is_featured && <span className={`${styles.badge} ${styles.badgeFeatured}`}>⭐ Featured</span>}
+
+        {/* ── Right column: desktop buy box ── */}
+        <div className={styles.rightCol}>
+          <div className={styles.buyBox}>
+            {/* Price */}
+            <div className={styles.buyPriceLine}>
+              <span className={styles.buyPriceMain}>
+                {property.type === "rent"
+                  ? `₹${displayPrice.toLocaleString("en-IN")}`
+                  : fmt(displayPrice)}
+              </span>
+              {property.type === "rent" && (
+                <span className={styles.buyPriceSub}>/month</span>
+              )}
+            </div>
+            {displayDeposit && (
+              <div className={styles.buyDeposit}>
+                Deposit: ₹{displayDeposit.toLocaleString("en-IN")}
+              </div>
+            )}
+
+            {/* Variant selector */}
+            {showSelector && (
+              <>
+                <div className={styles.sectionTitle} style={{ marginTop: 16 }}>Select Room Type</div>
+                {renderVariantSelector()}
+              </>
+            )}
+
+            {/* Availability */}
+            {avail && (
+              <span className={`${styles.availBadge} ${avail.cls}`}>
+                {avail.text}
+              </span>
+            )}
+            {freshDays !== null && (
+              <div className={styles.freshness}>
+                {freshDays === 0
+                  ? "Confirmed today"
+                  : `Confirmed ${freshDays}d ago`}
+              </div>
+            )}
+
+            {/* CTA */}
+            <button
+              className={`${styles.buyCtaBtn} ${availUnit?.available_count === 0 ? styles.buyCtaBtnFull : ""}`}
+              onClick={openSheet}
+            >
+              {ctaLabel}
+            </button>
+
+            {/* Property mini-info */}
+            <div style={{ marginTop: 16, fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
+              📍 {property.loc}, Kota
+              {property.nearest_coaching_hub && (
+                <div>🎓 Near {property.nearest_coaching_hub}</div>
+              )}
+            </div>
+
+            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.5 }}>
+              Your details are shared only with this dealer — no spam, no brokerage fee.
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Units section */}
-      {units.length > 0 && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>
-            Room / Unit Types — tap to enquire about a specific type
-          </div>
-          <div className={styles.unitsScroll}>
-            {units.map((u) => (
-              <div
-                key={u.id}
-                className={`${styles.unitCard} ${selectedUnit?.id === u.id ? styles.unitCardSelected : ""}`}
-                onClick={() => setSelectedUnit((prev) => prev?.id === u.id ? null : u)}
-              >
-                <div className={styles.unitLabel}>{u.label}</div>
-                <div className={styles.unitPrice}>₹{u.price_per_month.toLocaleString("en-IN")}/mo</div>
-                <div className={styles.unitMeta}>
-                  {u.capacity > 1 ? `${u.capacity} persons · ` : ""}
-                  {u.has_ac ? "AC" : u.has_cooler ? "Cooler" : "No cooling"}
-                  {u.attached_bath ? " · Attached bath" : ""}
-                  {u.meals_included ? " · Meals incl." : ""}
-                  {u.deposit_amount ? `\nDeposit ₹${u.deposit_amount.toLocaleString("en-IN")}` : ""}
-                </div>
-                <span className={`${styles.unitBadge} ${u.available_count === 0 ? styles.unitBadgeFull : ""}`}>
-                  {u.available_count === 0
-                    ? "Full — no vacancy"
-                    : `${u.available_count} of ${u.total_count} available`}
-                </span>
-              </div>
-            ))}
-          </div>
-          {selectedUnit && (
-            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(15,118,110,0.05)", borderRadius: 10, border: "1px solid rgba(15,118,110,0.15)", fontSize: 13, color: "var(--ink)" }}>
-              Selected: <b>{selectedUnit.label}</b> — tap &ldquo;Get Dealer Contact&rdquo; below to enquire about this room type.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Amenities */}
-      {amenities.length > 0 && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>Amenities</div>
-          <div className={styles.amenityGrid}>
-            {amenities.map((a) => (
-              <div key={a.label} className={styles.amenity}>
-                <span className={styles.amenityIcon}>{a.icon}</span>
-                {a.label}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Features */}
-      {property.features?.length > 0 && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>Features</div>
-          <div className={styles.chips}>
-            {property.features.map((f) => (
-              <span key={f} className={styles.chip}>{f}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Description */}
-      {property.description && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>About This Property</div>
-          <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-            {property.description}
-          </p>
-        </div>
-      )}
-
-      {/* Rental details */}
-      {property.type === "rent" && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>Rental Details</div>
-          <div className={styles.detailList}>
-            {property.available_from && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Available From</span>
-                <span className={styles.detailValue}>{fmtDate(property.available_from)}</span>
-              </div>
-            )}
-            {property.min_stay_months && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Minimum Stay</span>
-                <span className={styles.detailValue}>{property.min_stay_months} month{property.min_stay_months > 1 ? "s" : ""}</span>
-              </div>
-            )}
-            {property.gender_preference && property.gender_preference !== "any" && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Gender Preference</span>
-                <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>{property.gender_preference}</span>
-              </div>
-            )}
-            {property.furnishing_status && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Furnishing</span>
-                <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>{property.furnishing_status.replace("-", " ")}</span>
-              </div>
-            )}
-            {property.nearest_coaching_hub && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Nearest Coaching</span>
-                <span className={styles.detailValue}>{property.nearest_coaching_hub}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Distance calculator */}
-      {showDistWidget && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>Distance from Your Location</div>
-          <DistanceWidget lat={propLat!} lng={propLng!} mapsKey={mapsKey} />
-        </div>
-      )}
-
-      {/* Dealer info */}
-      {dealer && (
-        <div className={styles.card}>
-          <div className={styles.sectionTitle}>Listed By</div>
-          <div className={styles.dealerRow}>
-            <div className={styles.dealerAvatar}>{dealer.name[0]}</div>
-            <div>
-              <div className={styles.dealerName}>{dealer.name}</div>
-              <div className={styles.dealerRole}>{dealer.role}</div>
-              <div className={styles.dealerStats}>
-                <span><b>{dealer.years}</b> yrs exp</span>
-                <span><b>⭐{dealer.rating}</b> rating</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sticky CTA */}
+      {/* Sticky CTA bar — mobile only (hidden on desktop via CSS) */}
       <div className={styles.ctaBar}>
         <div className={styles.ctaBarInner}>
           <div className={styles.ctaPrice}>
-            <div className={styles.ctaPriceMain}>{fmt(property.rent_per_month ?? property.price)}</div>
+            <div className={styles.ctaPriceMain}>{fmt(displayPrice)}</div>
             <div className={styles.ctaPriceSub}>{property.type === "rent" ? "per month" : "sale price"}</div>
           </div>
-          <button className={styles.ctaBtn} onClick={() => openSheet(selectedUnit ?? undefined)}>
-            {selectedUnit ? `Enquire — ${selectedUnit.label}` : "Get Dealer Contact"}
+          <button className={styles.ctaBtn} onClick={openSheet}>
+            {ctaLabel}
           </button>
         </div>
       </div>

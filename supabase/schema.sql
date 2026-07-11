@@ -193,3 +193,20 @@ create policy "public read property_units"
   );
 
 -- leads / otp_verifications: no public access — service role only
+
+-- =====================================================================
+-- MIGRATION M1 — Variant attributes on property_units
+-- Safe to re-run (uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS).
+-- Run in Supabase SQL editor AFTER the base schema above.
+-- =====================================================================
+
+alter table property_units
+  add column if not exists attributes       jsonb         not null default '{}',
+  add column if not exists unit_photos      text[]        not null default '{}',
+  add column if not exists last_confirmed_at timestamptz  not null default now();
+
+create index if not exists idx_punits_attributes
+  on property_units using gin (attributes);
+
+-- Backfill attributes for Hostel / PG units (derive from boolean columns)
+-- Run scripts/backfill-attributes.sql separately after applying this migration.

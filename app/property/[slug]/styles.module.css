@@ -712,6 +712,238 @@
   line-height: 1.5;
 }
 
+/* ── Desktop two-column layout ─────────────────────────────── */
+.layout {
+  display: block;
+}
+.leftCol {
+  /* mobile: full width */
+}
+.rightCol {
+  display: none;
+}
+@media (min-width: 768px) {
+  .page {
+    padding-bottom: 0; /* buy box replaces sticky bar on desktop */
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    max-width: 1100px;
+    margin: 0 auto;
+    align-items: start;
+  }
+  .leftCol {
+    min-width: 0;
+  }
+  .rightCol {
+    display: block;
+    position: sticky;
+    top: 54px;
+    padding: 14px;
+    border-left: 1px solid var(--line);
+    background: var(--surface);
+    min-height: calc(100vh - 54px);
+  }
+  .ctaBar {
+    display: none;
+  }
+  .mobileOnly {
+    display: none !important;
+  }
+  .card {
+    max-width: 100%;
+  }
+  .topNavInner {
+    max-width: 100%;
+    padding: 0 20px;
+  }
+}
+@media (max-width: 767px) {
+  .desktopOnly {
+    display: none !important;
+  }
+}
+
+/* ── Buy box (desktop right column) ────────────────────────── */
+.buyBox {
+  padding: 6px 4px;
+}
+.buyPriceLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.buyPriceMain {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.buyPriceSub {
+  font-size: 14px;
+  color: var(--muted);
+}
+.buyDeposit {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.buyCtaBtn {
+  width: 100%;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 12px;
+  padding: 14px;
+  border: none;
+  cursor: pointer;
+  margin-top: 14px;
+  text-align: center;
+}
+.buyCtaBtn:active {
+  opacity: 0.85;
+}
+.buyCtaBtnFull {
+  background: var(--muted);
+}
+
+/* ── Variant chip selector ──────────────────────────────────── */
+.variantSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.variantAxis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.axisLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.axisSelected {
+  text-transform: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: rgba(15,118,110,0.08);
+  border-radius: 4px;
+  padding: 1px 7px;
+}
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.variantChip {
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.variantChip:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.variantChipActive {
+  border-color: var(--color-primary);
+  background: rgba(15,118,110,0.08);
+  color: var(--color-primary);
+}
+.variantChipDisabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+/* ── Availability badge ─────────────────────────────────────── */
+.availBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 4px 10px;
+  margin-top: 12px;
+}
+.availOk {
+  background: rgba(22,163,74,0.1);
+  color: var(--color-success);
+  border: 1px solid rgba(22,163,74,0.25);
+}
+.availFew {
+  background: rgba(245,158,11,0.1);
+  color: #b45309;
+  border: 1px solid rgba(245,158,11,0.3);
+}
+.availFull {
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+  border: 1px solid rgba(220,38,38,0.25);
+}
+
+/* ── Freshness text ─────────────────────────────────────────── */
+.freshness {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* ── Fix legacy var(--red) references ───────────────────────── */
+.thumbActive {
+  border-color: var(--color-primary);
+}
+.typeBadge {
+  background: var(--color-primary);
+}
+.unitCardSelected {
+  border-color: var(--color-primary);
+}
+.unitCard:hover {
+  border-color: var(--color-primary);
+}
+.unitPrice {
+  color: var(--color-primary);
+}
+.occupantBtnActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.ctaBtn {
+  background: var(--color-primary);
+}
+.submitBtn {
+  background: var(--color-primary);
+}
+.sheetUnitBadge {
+  color: var(--color-primary);
+}
+.revealBox {
+  background: rgba(15,118,110,0.06);
+  border-color: rgba(15,118,110,0.25);
+}
+.revealRef {
+  color: var(--color-primary);
+}
+.revealWaBtn {
+  background: var(--color-success);
+}
+
 /* ── Skeleton shimmer ───────────────────────────────────────── */
 .sk {
   display: block;

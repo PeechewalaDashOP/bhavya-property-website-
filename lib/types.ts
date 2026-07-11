@@ -39,6 +39,13 @@ export type Property = {
   desc: string;
 };
 
+export type UnitAttributes = {
+  bhk?: number;
+  occupancy?: 'single' | 'double' | 'triple';
+  cooling?: 'ac' | 'cooler' | 'none';
+  [key: string]: unknown;
+};
+
 export type PropertyUnit = {
   id: number;
   property_id: number;
@@ -54,6 +61,9 @@ export type PropertyUnit = {
   meals_included: boolean;
   description: string | null;
   sort_order: number;
+  attributes?: UnitAttributes | null;
+  unit_photos?: string[] | null;
+  last_confirmed_at?: string | null;
 };
 
 export type PropertyFull = {

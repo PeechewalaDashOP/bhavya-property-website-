@@ -4,7 +4,10 @@ import type { Metadata } from "next";
 import { PropertyFull } from "@/lib/types";
 import PropertyDetail from "./PropertyDetail";
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 async function fetchProperty(slug: string): Promise<PropertyFull | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -90,8 +93,17 @@ function buildJsonLd(prop: PropertyFull) {
   };
 }
 
-export default async function PropertyPage({ params }: Props) {
+export default async function PropertyPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const rawParams = await (searchParams ?? Promise.resolve({}));
+
+  // Flatten to Record<string, string> (ignore array values)
+  const initialParams: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawParams)) {
+    if (typeof v === "string") initialParams[k] = v;
+    else if (Array.isArray(v) && v.length > 0) initialParams[k] = v[0];
+  }
+
   const property = await fetchProperty(slug);
   if (!property) notFound();
 
@@ -104,7 +116,7 @@ export default async function PropertyPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PropertyDetail property={property} mapsKey={mapsKey} />
+      <PropertyDetail property={property} mapsKey={mapsKey} initialParams={initialParams} />
     </>
   );
 }

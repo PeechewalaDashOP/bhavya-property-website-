@@ -459,7 +459,12 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         <div className="rcount"><span>{ctx}</span> <b>{list.length}</b> properties</div>
         <div className="list">
           {list.slice(0, shown).map((p) => {
-            const goDetail = p.slug ? () => router.push(`/property/${p.slug}`) : () => setModalProp(p);
+            const goDetail = p.slug
+              ? () => {
+                  const params = fBhk ? `?bhk=${fBhk}` : "";
+                  router.push(`/property/${p.slug}${params}`);
+                }
+              : () => setModalProp(p);
             return (
             <div className="card" key={p.id}>
               <div className="ph" onClick={goDetail} style={p.slug ? { cursor: "pointer" } : undefined}>
@@ -477,7 +482,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                   {p.baths ? <span><b>{p.baths}</b> Bath</span> : null}
                   {p.sqft ? <span><b>{p.sqft.toLocaleString("en-IN")}</b> sqft</span> : null}
                 </div>
-                <div className="ft"><div className="dl">Dealer: <b>{p.dealer.name}</b></div><button className="ct" onClick={() => setModalProp(p)}>Contact</button></div>
+                <div className="ft"><div className="dl">Dealer: <b>{p.dealer.name}</b></div><button className="ct" onClick={p.slug ? goDetail : () => setModalProp(p)}>Contact</button></div>
               </div>
             </div>
             );
