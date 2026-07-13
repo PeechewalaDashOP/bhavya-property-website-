@@ -12,6 +12,8 @@ import {
 } from "@/lib/hostelLabels";
 import styles from "./styles.module.css";
 
+type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
+
 type PropRow = {
   id: number;
   title: string;
@@ -22,6 +24,7 @@ type PropRow = {
   rent_per_month: number | null;
   deposit_amount: number | null;
   is_approved: boolean;
+  listing_status: ListingStatus;
   slug: string | null;
   img: string | null;
   videos: string[] | null;
@@ -31,6 +34,14 @@ type PropRow = {
   created_at: string;
   hostel_meta: HostelMeta | null;
   dealers: { name: string; phone: string; is_active: boolean; role: string | null } | null;
+};
+
+const STATUS_BADGE: Record<ListingStatus, { label: string; bg: string; fg: string }> = {
+  pending:      { label: "⏳ Under Review",     bg: "rgba(245,158,11,0.12)", fg: "#b45309" },
+  live:         { label: "✓ Live",              bg: "rgba(22,160,106,0.12)", fg: "#16a06a" },
+  paused_owner: { label: "⏸️ Paused by Owner",  bg: "rgba(107,116,128,0.12)", fg: "#6b7480" },
+  paused_admin: { label: "⏸️ Paused by Admin",  bg: "rgba(107,116,128,0.12)", fg: "#6b7480" },
+  rejected:     { label: "🔴 Rejected",         bg: "rgba(220,38,38,0.10)", fg: "var(--color-danger)" },
 };
 
 function fmtDate(iso: string) {
@@ -55,7 +66,7 @@ function SkeletonCard() {
 export default function AdminPropertiesPage() {
   const router = useRouter();
   const [props, setProps] = useState<PropRow[]>([]);
-  const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [filter, setFilter] = useState<"pending" | "live" | "paused" | "rejected" | "all">("pending");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -79,7 +90,7 @@ export default function AdminPropertiesPage() {
 
   useEffect(() => { fetchProps(); }, [fetchProps]);
 
-  async function act(id: number, action: "approve" | "reject") {
+  async function act(id: number, action: "approve" | "reject" | "pause" | "unpause") {
     if (!supabase) return;
     setActing(id);
     const { data: { session } } = await supabase.auth.getSession();
@@ -89,11 +100,19 @@ export default function AdminPropertiesPage() {
       body: JSON.stringify({ id, action }),
     });
     if (res.ok) {
-      setProps((prev) => {
-        if (action === "reject") return prev.filter((p) => p.id !== id);
-        if (filter === "pending") return prev.filter((p) => p.id !== id);
-        return prev.map((p) => (p.id === id ? { ...p, is_approved: true } : p));
-      });
+      // Every action changes listing_status, so on any filtered (non-"all")
+      // tab the row simply no longer belongs there — just re-fetch to stay correct.
+      if (filter !== "all") {
+        setProps((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        const next: Record<string, { is_approved: boolean; listing_status: ListingStatus }> = {
+          approve: { is_approved: true, listing_status: "live" },
+          reject: { is_approved: false, listing_status: "rejected" },
+          pause: { is_approved: false, listing_status: "paused_admin" },
+          unpause: { is_approved: true, listing_status: "live" },
+        };
+        setProps((prev) => prev.map((p) => (p.id === id ? { ...p, ...next[action] } : p)));
+      }
       setExpanded(null);
     } else {
       await fetchProps();
@@ -101,7 +120,7 @@ export default function AdminPropertiesPage() {
     setActing(null);
   }
 
-  const pendingCount = props.filter((p) => !p.is_approved).length;
+  const pendingCount = props.filter((p) => p.listing_status === "pending").length;
 
   return (
     <div>
@@ -116,7 +135,7 @@ export default function AdminPropertiesPage() {
               {pendingCount} pending
             </span>
           )}
-          {!loading && filter === "all" && (
+          {!loading && filter !== "pending" && (
             <span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 16 }}>
               {props.length}
             </span>
@@ -132,14 +151,14 @@ export default function AdminPropertiesPage() {
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        {(["pending", "all"] as const).map((f) => (
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        {(["pending", "live", "paused", "rejected", "all"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={filter === f ? styles.tabActive : styles.tab}
           >
-            {f === "pending" ? "⏳ Pending Approval" : "All Properties"}
+            {{ pending: "⏳ Under Review", live: "✓ Live", paused: "⏸️ Paused", rejected: "🔴 Rejected", all: "All Properties" }[f]}
           </button>
         ))}
       </div>
@@ -219,11 +238,15 @@ export default function AdminPropertiesPage() {
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>
                       {fmtDate(p.created_at)} · {p.gallery?.length ?? 0} photos · {p.videos?.length ?? 0} videos
                     </span>
-                    {p.is_approved ? (
-                      <span className={styles.badgeLive}>✓ Live</span>
-                    ) : (
-                      <span className={styles.badgePending}>⏳ Pending</span>
-                    )}
+                    <span
+                      style={{
+                        fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 6,
+                        background: STATUS_BADGE[p.listing_status].bg,
+                        color: STATUS_BADGE[p.listing_status].fg,
+                      }}
+                    >
+                      {STATUS_BADGE[p.listing_status].label}
+                    </span>
                   </div>
                 </div>
 
@@ -346,20 +369,16 @@ export default function AdminPropertiesPage() {
                     </div>
                   )}
 
-                  {/* Action buttons */}
-                  <div style={{ display: "flex", gap: 10 }}>
-                    {!p.is_approved ? (
+                  {/* Action buttons — depend on current lifecycle status */}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {p.listing_status === "pending" && (
                       <>
-                        <button
-                          onClick={() => act(p.id, "approve")}
-                          disabled={acting === p.id}
-                          className={styles.btnApprove}
-                        >
+                        <button onClick={() => act(p.id, "approve")} disabled={acting === p.id} className={styles.btnApprove}>
                           ✓ Approve & Publish
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm(`Delete "${p.title}"? This cannot be undone.`)) act(p.id, "reject");
+                            if (confirm(`Reject "${p.title}"? It stays visible to the owner as rejected — not deleted.`)) act(p.id, "reject");
                           }}
                           disabled={acting === p.id}
                           className={styles.btnReject}
@@ -367,15 +386,26 @@ export default function AdminPropertiesPage() {
                           ✗ Reject
                         </button>
                       </>
-                    ) : (
+                    )}
+                    {p.listing_status === "live" && (
                       <button
                         onClick={() => {
-                          if (confirm(`Remove "${p.title}" from public site?`)) act(p.id, "reject");
+                          if (confirm(`Pause "${p.title}"? It will come off the public site until you unpause it.`)) act(p.id, "pause");
                         }}
                         disabled={acting === p.id}
                         className={styles.btnReject}
                       >
-                        ✗ Remove from Site
+                        ⏸️ Pause
+                      </button>
+                    )}
+                    {(p.listing_status === "paused_owner" || p.listing_status === "paused_admin") && (
+                      <button onClick={() => act(p.id, "unpause")} disabled={acting === p.id} className={styles.btnApprove}>
+                        ▶ Unpause & Publish
+                      </button>
+                    )}
+                    {p.listing_status === "rejected" && (
+                      <button onClick={() => act(p.id, "approve")} disabled={acting === p.id} className={styles.btnApprove}>
+                        ✓ Approve & Publish
                       </button>
                     )}
                   </div>

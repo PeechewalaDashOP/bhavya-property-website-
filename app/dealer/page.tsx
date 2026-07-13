@@ -260,6 +260,12 @@ export default function DealerPage() {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <Link
+              href="/dealer/properties"
+              style={{ background: "var(--surface)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "7px 14px", borderRadius: 8, textDecoration: "none", border: "1px solid var(--line)" }}
+            >
+              My Properties
+            </Link>
+            <Link
               href="/dealer/availability"
               style={{ background: "var(--surface)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "7px 14px", borderRadius: 8, textDecoration: "none", border: "1px solid var(--line)" }}
             >

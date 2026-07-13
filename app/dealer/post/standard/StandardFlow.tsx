@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { LoadingBar } from "@/components/LoadingBar";
 import { COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS } from "@/lib/constants";
 import {
@@ -55,7 +54,6 @@ export default function StandardFlow({
   onCancel: () => void;
   onDone: () => void;
 }) {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [units, setUnits] = useState<Unit[]>([]);
   const [photos, setPhotos] = useState<File[]>([]);
@@ -73,6 +71,22 @@ export default function StandardFlow({
 
   const photoUrlsRef = useRef<string[]>([]);
   photoUrlsRef.current = photoUrls;
+
+  // Autosave to a resumable draft — text/selection fields only (photos and
+  // videos are File objects, not persisted; re-added if the draft is resumed).
+  useEffect(() => {
+    if (uploading || done) return;
+    const token = localStorage.getItem("prop100_dealer_token");
+    if (!token) return;
+    const t = setTimeout(() => {
+      fetch("/api/dealer/draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ purpose: form.purpose, form_data: form }),
+      }).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [form, uploading, done]);
 
   function set<K extends keyof StandardForm>(k: K, v: StandardForm[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -140,7 +154,7 @@ export default function StandardFlow({
 
     try {
       const token = localStorage.getItem("prop100_dealer_token");
-      if (!token) { router.replace("/dealer/login"); return; }
+      if (!token) throw new Error("Session expired — please go back and re-enter your details.");
 
       const allFiles = [
         ...photos.map((f) => ({ name: f.name, type: f.type, category: "photo" as const })),

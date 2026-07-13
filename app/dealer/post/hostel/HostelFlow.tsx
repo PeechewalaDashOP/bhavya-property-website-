@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { LoadingBar } from "@/components/LoadingBar";
 import {
   HostelForm, roomCategoryLabel, roomCategoryCapacity,
@@ -44,7 +43,6 @@ export default function HostelFlow({
   onCancel: () => void;
   onDone: () => void;
 }) {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -58,6 +56,22 @@ export default function HostelFlow({
 
   const mediaRef = useRef<MediaItem[]>([]);
   mediaRef.current = media;
+
+  // Autosave to a resumable draft — text/selection fields only (photos and
+  // videos are File objects, not persisted; re-added if the draft is resumed).
+  useEffect(() => {
+    if (uploading || done) return;
+    const token = localStorage.getItem("prop100_dealer_token");
+    if (!token) return;
+    const t = setTimeout(() => {
+      fetch("/api/dealer/draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ purpose: "pg", form_data: form }),
+      }).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [form, uploading, done]);
 
   function clearError(k: string) {
     setErrors((e) => {
@@ -104,7 +118,7 @@ export default function HostelFlow({
 
     try {
       const token = localStorage.getItem("prop100_dealer_token");
-      if (!token) { router.replace("/dealer/login"); return; }
+      if (!token) throw new Error("Session expired — please go back and re-enter your details.");
 
       const photoItems = mediaRef.current;
       const allFiles = [

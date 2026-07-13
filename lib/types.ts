@@ -109,6 +109,16 @@ export type HostelMeta = {
   photo_sections?: Record<string, string>;
 };
 
+export type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
+
+export type PropertyDraft = {
+  id: number;
+  dealer_id: number;
+  purpose: "rent" | "sale" | "pg";
+  form_data: Record<string, unknown>;
+  updated_at: string;
+};
+
 export type PropertyFull = {
   id: number;
   slug: string | null;

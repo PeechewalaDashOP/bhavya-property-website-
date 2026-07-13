@@ -113,6 +113,10 @@ export async function POST(req: NextRequest) {
     posted_days: 0,
     property_status: "available",
   };
+  // listing_status is intentionally omitted — it defaults to 'pending' at the
+  // DB level (supabase/migration_listing_lifecycle.sql). Referencing it here
+  // unconditionally would break every submission until that migration runs,
+  // same reasoning as the hostel_meta column above.
 
   // Only reference hostel_meta when the caller actually sends it (PG/Hostel flow).
   // Omitting the key entirely — rather than sending null — means standard
@@ -161,6 +165,15 @@ export async function POST(req: NextRequest) {
     if (toInsert.length > 0) {
       await db.from("property_units").insert(toInsert);
     }
+  }
+
+  // Best-effort: clear the dealer's in-progress draft now that it's submitted.
+  // Wrapped so a missing property_drafts table (pre-migration) can't fail
+  // an otherwise-successful submission.
+  try {
+    await db.from("property_drafts").delete().eq("dealer_id", session.id);
+  } catch {
+    // ignore — draft cleanup is not critical to the submission succeeding
   }
 
   return NextResponse.json({ id: data.id });

@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
   const db = serviceDb();
   const { data, error } = await db
     .from("properties")
-    .select("id, title, ptype, loc, slug, is_approved, property_units(id, label, capacity, price_per_month, total_count, available_count, attributes, last_confirmed_at, sort_order)")
+    .select(
+      `id, title, ptype, loc, slug, is_approved, listing_status, type, img, price, rent_per_month, deposit_amount, created_at,
+      property_units(id, label, capacity, price_per_month, total_count, available_count, attributes, last_confirmed_at, sort_order)`
+    )
     .eq("dealer_id", payload.id)
     .order("created_at", { ascending: false });
 
