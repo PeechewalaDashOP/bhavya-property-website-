@@ -7,6 +7,6 @@ import SiteClient from "@/components/SiteClient";
 export const revalidate = 60;
 
 export default async function Page() {
-  const { properties, dealers, areas } = await getData();
-  return <SiteClient properties={properties} dealers={dealers} areas={areas} />;
+  const { properties, dealers, areas, localities } = await getData();
+  return <SiteClient properties={properties} dealers={dealers} areas={areas} localities={localities} />;
 }

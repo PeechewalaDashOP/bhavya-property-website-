@@ -41,6 +41,8 @@ quickReplies should be 2-4 short actionable options.`;
 type ConvMsg = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: NextRequest) {
+  const isDev = process.env.NODE_ENV !== "production";
+
   try {
     const { messages }: { messages: ConvMsg[] } = await req.json();
     if (!messages?.length) return NextResponse.json({ error: "No messages" }, { status: 400 });
@@ -56,11 +58,12 @@ export async function POST(req: NextRequest) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash-lite",
       systemInstruction: SYSTEM_PROMPT,
     });
 
     // Build Gemini chat history (all except the last message)
+    // Gemini requires history to start with "user" and alternate user/model
     const history = messages.slice(0, -1).map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
@@ -82,9 +85,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[chat]", err);
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { text: "Sorry, something went wrong. Please try again.", showCards: false },
+      {
+        text: isDev
+          ? `[Dev error] ${msg}`
+          : "Sorry, something went wrong. Please try again.",
+        showCards: false,
+      },
       { status: 500 }
     );
   }

@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     .select(
       "id,title,type,ptype,loc,price,rent_per_month,deposit_amount," +
       "is_approved,is_featured,slug,img,videos,gallery,features," +
-      "description,created_at,dealer_id,dealers(name,phone,is_active,role)"
+      "description,created_at,dealer_id,hostel_meta,dealers(name,phone,is_active,role)"
     )
     .order("created_at", { ascending: false });
 

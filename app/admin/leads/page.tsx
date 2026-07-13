@@ -129,7 +129,7 @@ export default function AdminLeadsPage() {
     {} as Record<Status, number>
   );
 
-  const HEADERS = ["Ref", "Customer", "Property", "Dealer", "Status", "Move-in / People", "Created", "Response"];
+  const HEADERS = ["Ref", "Customer", "Property", "Partner", "Status", "Move-in / People", "Created", "Response"];
 
   return (
     <div>

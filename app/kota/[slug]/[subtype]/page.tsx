@@ -8,6 +8,9 @@ import {
 } from "@/lib/seoHelpers";
 import { COACHING_HUBS } from "@/lib/constants";
 import { SeoPageShell } from "@/components/SeoGrid";
+import { createClient } from "@supabase/supabase-js";
+import { PropertyFull } from "@/lib/types";
+import PropertyDetail from "@/app/property/[slug]/PropertyDetail";
 
 type Props = { params: Promise<{ slug: string; subtype: string }> };
 
@@ -34,10 +37,40 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+async function fetchPropertyBySlug(propertySlug: string): Promise<PropertyFull | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return null;
+  const db = createClient(url, key, { auth: { persistSession: false } });
+  const { data } = await db
+    .from("properties")
+    .select("*, property_units(*), dealers!dealer_id(id,name,role,years,rating)")
+    .eq("slug", propertySlug)
+    .eq("is_approved", true)
+    .maybeSingle();
+  if (!data) return null;
+  const units = Array.isArray(data.property_units)
+    ? data.property_units.sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
+    : [];
+  return { ...data, property_units: units } as PropertyFull;
+}
+
 export default async function AreaTypePage({ params }: Props) {
   const { slug, subtype } = await params;
   const area  = AREA_SLUGS[slug];
   const ptype = TYPE_SLUGS[subtype];
+
+  // If subtype isn't a known type slug, try it as a property slug
+  // This handles /kota/[locality]/[property-slug] URLs
+  if (!ptype) {
+    const property = await fetchPropertyBySlug(subtype);
+    if (property) {
+      const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+      return <PropertyDetail property={property} mapsKey={mapsKey} initialParams={{}} />;
+    }
+    notFound();
+  }
+
   if (!area || !ptype) notFound();
 
   const props = await getPropertiesFiltered({ area, ptype });

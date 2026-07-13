@@ -1,6 +1,7 @@
-import { Area, Property, PublicDealer } from "./types";
+import { Area, Locality, Property, PublicDealer } from "./types";
 import { AREAS as SAMPLE_AREAS, DEALERS as SAMPLE_DEALERS, PROPS as SAMPLE_PROPS } from "./sampleData";
 import { supabase, supabaseEnabled } from "./supabase";
+import { getLocalities } from "./queries/localities";
 
 // Server-side data fetch. Falls back to sample data so the app runs with zero
 // configuration; once Supabase env vars are set, real data is used.
@@ -38,32 +39,36 @@ function mapProperty(row: Row, dealersById: Map<number, PublicDealer>): Property
   };
 }
 
-export async function getData(): Promise<{ properties: Property[]; dealers: PublicDealer[]; areas: Area[] }> {
+export async function getData(): Promise<{ properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities: Locality[] }> {
   if (!supabaseEnabled || !supabase) {
     return {
       properties: SAMPLE_PROPS.map((p) => ({ ...p, slug: null, dealer: toPublicDealer(p.dealer) })),
       dealers: SAMPLE_DEALERS.map(toPublicDealer),
       areas: SAMPLE_AREAS,
+      localities: [],
     };
   }
   try {
-    const [{ data: dealers }, { data: areas }, { data: props }] = await Promise.all([
+    const [{ data: dealers }, { data: areas }, { data: props }, localities] = await Promise.all([
       supabase.from("dealers").select("id,name,role,years,rating").order("id"),
       supabase.from("areas").select("*"),
-      supabase.from("properties").select("*").eq("is_approved", true).order("posted_days")
+      supabase.from("properties").select("*").eq("is_approved", true).order("posted_days"),
+      getLocalities(),
     ]);
     const dealerList = (dealers ?? []) as unknown as PublicDealer[];
     const byId = new Map<number, PublicDealer>(dealerList.map((d) => [d.id, d]));
     return {
       properties: ((props ?? []) as Row[]).map((r) => mapProperty(r, byId)),
       dealers: dealerList.length ? dealerList.map(toPublicDealer) : SAMPLE_DEALERS.map(toPublicDealer),
-      areas: ((areas ?? []) as unknown as Area[]).length ? ((areas ?? []) as unknown as Area[]) : SAMPLE_AREAS
+      areas: ((areas ?? []) as unknown as Area[]).length ? ((areas ?? []) as unknown as Area[]) : SAMPLE_AREAS,
+      localities,
     };
   } catch {
     return {
       properties: SAMPLE_PROPS.map((p) => ({ ...p, slug: null, dealer: toPublicDealer(p.dealer) })),
       dealers: SAMPLE_DEALERS.map(toPublicDealer),
       areas: SAMPLE_AREAS,
+      localities: [],
     };
   }
 }

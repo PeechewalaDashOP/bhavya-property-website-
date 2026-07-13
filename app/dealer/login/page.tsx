@@ -75,12 +75,12 @@ export default function DealerLoginPage() {
             Prop<span style={{ color: "var(--red)" }}>100</span>
           </div>
           <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
-            Dealer Login
+            Partner Login
           </div>
         </div>
 
         <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
-          Enter your registered phone number to access your dealer dashboard.
+          Enter your registered phone number to access your partner dashboard.
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

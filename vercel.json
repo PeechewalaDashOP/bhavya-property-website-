@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/nudge",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/ping",
+      "schedule": "0 0 */5 * *"
+    }
+  ]
+}

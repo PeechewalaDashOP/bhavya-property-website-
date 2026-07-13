@@ -12,6 +12,8 @@ export const AXIS_OPTIONS: Record<AxisKey, AxisOption[]> = {
     { value: 'single',  label: 'Single'  },
     { value: 'double',  label: 'Double'  },
     { value: 'triple',  label: 'Triple'  },
+    { value: 'four',    label: 'Four Sharing' },
+    { value: 'other',   label: 'Other'   },
   ],
   cooling: [
     { value: 'ac',     label: 'AC'         },
@@ -30,6 +32,7 @@ export const AXIS_LABELS: Record<AxisKey, string> = {
 // Zero axes = no selector rendered; single axis = one row; two axes = two rows with
 // Amazon-style mutual compatibility disabling.
 export const CATEGORY_AXES: Record<string, AxisKey[]> = {
+  // Title Case — legacy DB values
   Hostel:  ['occupancy', 'cooling'],
   PG:      ['occupancy', 'cooling'],
   Room:    [],
@@ -39,6 +42,18 @@ export const CATEGORY_AXES: Record<string, AxisKey[]> = {
   Villa:   ['bhk'],
   Shop:    [],
   Plot:    [],
+  // lowercase — spec enum values
+  hostel:            ['occupancy', 'cooling'],
+  pg:                ['occupancy', 'cooling'],
+  room:              [],
+  studio:            [],
+  flat:              ['bhk'],
+  house:             ['bhk'],
+  villa:             ['bhk'],
+  builder_floor:     ['bhk'],
+  independent_house: ['bhk'],
+  shop:              [],
+  plot:              [],
 };
 
 // Returns the chip label for a given axis value

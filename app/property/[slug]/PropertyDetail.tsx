@@ -6,6 +6,10 @@ import { PropertyFull, PropertyUnit } from "@/lib/types";
 import { AREA_COORDS, PTYPE_ICONS } from "@/lib/constants";
 import { fmt } from "@/lib/format";
 import { CATEGORY_AXES, AXIS_OPTIONS, AXIS_LABELS, AxisKey, chipLabel } from "@/lib/variantConfig";
+import {
+  HOUSE_RULE_LABELS, SERVICE_LABELS, COMMON_AMENITY_LABELS,
+  TENANT_TYPE_LABELS, gateTimeLabel, noticePeriodLabel,
+} from "@/lib/hostelLabels";
 import styles from "./styles.module.css";
 
 /* ─── Haversine distance (km) ─────────────────────────────── */
@@ -238,7 +242,7 @@ function LeadSheet({
 
           {phase === "form" && (
             <>
-              <div className={styles.sheetTitle}>Get Dealer Contact</div>
+              <div className={styles.sheetTitle}>Get Partner Contact</div>
               <div className={styles.sheetSub}>{property.title}</div>
               {selectedUnit && (
                 <div className={styles.sheetUnitBadge}>
@@ -318,7 +322,7 @@ function LeadSheet({
               </button>
 
               <p style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
-                Your details are shared only with this dealer — no spam, no brokerage fee.
+                Your details are shared only with this partner — no spam, no brokerage fee.
               </p>
             </>
           )}
@@ -366,7 +370,7 @@ function LeadSheet({
 
           {phase === "done" && (
             <>
-              <div className={styles.sheetTitle}>Contact Dealer</div>
+              <div className={styles.sheetTitle}>Contact Partner</div>
               <div className={styles.revealBox}>
                 {ref && (
                   <div className={styles.revealRef}>✓ REFERENCE: {ref}</div>
@@ -385,19 +389,19 @@ function LeadSheet({
                       rel="noreferrer"
                       className={styles.revealWaBtn}
                     >
-                      💬 WhatsApp the Dealer
+                      💬 WhatsApp the Partner
                     </a>
                   </>
                 ) : (
                   <p style={{ color: "var(--muted)", fontSize: 14 }}>
-                    Dealer will contact you shortly on +91 {phone.replace(/\D/g, "")}.
+                    Partner will contact you shortly on +91 {phone.replace(/\D/g, "")}.
                   </p>
                 )}
               </div>
               {ref && (
                 <p className={styles.revealNote}>
-                  Show reference <b>{ref}</b> to the dealer when you visit the property.
-                  Your lead has been saved and the dealer has been notified on WhatsApp.
+                  Show reference <b>{ref}</b> to the partner when you visit the property.
+                  Your lead has been saved and the partner has been notified on WhatsApp.
                 </p>
               )}
               <button className={styles.submitBtn} onClick={onClose}>
@@ -424,7 +428,6 @@ function orderedAxisValues(axis: AxisKey, units: PropertyUnit[]): string[] {
   if (opts.length > 0) {
     return opts.filter((o) => present.has(o.value)).map((o) => o.value);
   }
-  // bhk — sort numerically
   return Array.from(present).sort((a, b) => Number(a) - Number(b));
 }
 
@@ -435,7 +438,6 @@ function initSel(
 ): Record<string, string> {
   if (axes.length === 0 || units.length === 0) return {};
 
-  // Try URL params — if all axes present AND match a real unit, use them
   const fromUrl: Record<string, string> = {};
   for (const ax of axes) {
     if (params[ax]) fromUrl[ax] = params[ax];
@@ -447,7 +449,6 @@ function initSel(
     if (match) return fromUrl;
   }
 
-  // Default: cheapest available unit; fall back to cheapest overall
   const candidates = units.filter((u) => (u.available_count ?? 0) > 0);
   const source = candidates.length > 0 ? candidates : units;
   const best = source.reduce((a, b) =>
@@ -525,6 +526,41 @@ function daysSince(iso: string | null | undefined): number | null {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+/* ─── Similar property card ───────────────────────────────────── */
+type SimilarProp = {
+  id: number;
+  slug: string;
+  title: string;
+  ptype: string;
+  loc: string;
+  img: string | null;
+  rent_per_month: number | null;
+  price: number;
+  type: string;
+};
+
+function SimilarCard({ p }: { p: SimilarProp }) {
+  const price = p.type === "rent"
+    ? `₹${(p.rent_per_month ?? p.price).toLocaleString("en-IN")}/mo`
+    : fmt(p.price);
+  return (
+    <Link href={`/property/${p.slug}`} className={styles.similarCard}>
+      <div className={styles.similarImg}>
+        {p.img
+          ? <img src={p.img} alt={p.title} />
+          : <div className={styles.similarImgPlaceholder}>{PTYPE_ICONS[p.ptype] ?? "🏠"}</div>
+        }
+      </div>
+      <div className={styles.similarBody}>
+        <div className={styles.similarPtype}>{p.ptype}</div>
+        <div className={styles.similarTitle}>{p.title}</div>
+        <div className={styles.similarLoc}>📍 {p.loc}</div>
+        <div className={styles.similarPrice}>{price}</div>
+      </div>
+    </Link>
+  );
+}
+
 /* ─── Main component ─────────────────────────────────────────── */
 export default function PropertyDetail({
   property,
@@ -548,16 +584,25 @@ export default function PropertyDetail({
   );
   const [heroIdx, setHeroIdx] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
+  const [similarProps, setSimilarProps] = useState<SimilarProp[]>([]);
 
   const selectedUnit = resolveUnit(units, sel, axes);
 
-  // Swap gallery when selected unit has its own photos
   const displayGallery =
     selectedUnit?.unit_photos?.length ? selectedUnit.unit_photos : gallery;
   const hasGallery = displayGallery.length > 0;
 
-  // Reset hero image when the gallery source changes
   useEffect(() => { setHeroIdx(0); }, [selectedUnit?.id]);
+
+  // Fetch similar properties
+  useEffect(() => {
+    if (!property.slug) return;
+    fetch(`/api/similar?ptype=${encodeURIComponent(property.ptype)}&loc=${encodeURIComponent(property.loc)}&exclude=${encodeURIComponent(property.slug ?? "")}&limit=6`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setSimilarProps(d); })
+      .catch(() => {});
+  }, [property.slug, property.ptype, property.loc]);
 
   const propLat = property.lat ?? AREA_COORDS[property.loc]?.lat ?? null;
   const propLng = property.lng ?? AREA_COORDS[property.loc]?.lng ?? null;
@@ -565,7 +610,6 @@ export default function PropertyDetail({
 
   const openSheet = useCallback(() => { setSheetOpen(true); }, []);
 
-  // Price/deposit: prefer selected unit; fall back to property-level
   const displayPrice = selectedUnit
     ? selectedUnit.price_per_month
     : property.type === "rent"
@@ -574,32 +618,41 @@ export default function PropertyDetail({
 
   const displayDeposit = selectedUnit?.deposit_amount ?? property.deposit_amount;
 
-  // Availability — only show when we have a concrete selected unit or exactly 1 unit
   const availUnit = selectedUnit ?? (units.length === 1 ? units[0] : null);
   const avail = availUnit !== null ? availInfo(availUnit.available_count ?? 0) : null;
   const freshDays = availUnit ? daysSince(availUnit.last_confirmed_at) : null;
 
-  const amenities = [
-    property.parking_available && { icon: "🚗", label: "Parking" },
-    property.wifi_included && { icon: "📶", label: "WiFi" },
-    property.attached_bathroom && { icon: "🚿", label: "Attached Bath" },
-    property.meals_included && { icon: "🍽️", label: "Meals Included" },
-    property.furnishing_status === "furnished" && { icon: "🛋️", label: "Furnished" },
-    property.furnishing_status === "semi-furnished" && { icon: "🛋️", label: "Semi-Furnished" },
-  ].filter(Boolean) as { icon: string; label: string }[];
+  const isFull = (availUnit?.available_count ?? -1) === 0;
+  const ctaLabel = selectedUnit
+    ? `Get Contact — ${selectedUnit.label}`
+    : "Get Partner Contact";
+
+  // Highlights: top features as icon-chips
+  const highlights: { icon: string; label: string }[] = [];
+  if (property.gender_preference && property.gender_preference !== "any") {
+    highlights.push({
+      icon: property.gender_preference === "boys" ? "👦" : "👧",
+      label: property.gender_preference === "boys" ? "Boys Only" : "Girls Only",
+    });
+  }
+  if (property.meals_included) highlights.push({ icon: "🍽️", label: "Meals Included" });
+  if (property.wifi_included) highlights.push({ icon: "📶", label: "Free WiFi" });
+  if (property.parking_available) highlights.push({ icon: "🚗", label: "Parking" });
+  if (property.attached_bathroom) highlights.push({ icon: "🚿", label: "Attached Bath" });
+  if (property.nearest_coaching_hub) highlights.push({ icon: "🎓", label: `Near ${property.nearest_coaching_hub}` });
+  if (property.furnishing_status === "furnished") highlights.push({ icon: "🛋️", label: "Fully Furnished" });
+  if (property.furnishing_status === "semi-furnished") highlights.push({ icon: "🛋️", label: "Semi-Furnished" });
+  if (property.min_stay_months) highlights.push({ icon: "📅", label: `Min ${property.min_stay_months} Month${property.min_stay_months > 1 ? "s" : ""}` });
+  if (property.hostel_meta?.usp_text) highlights.push({ icon: "✨", label: property.hostel_meta.usp_text });
+
+  const isHostelOrPG = ["Hostel", "PG", "hostel", "pg"].includes(property.ptype);
+  const hm = property.hostel_meta;
 
   function fmtDateStr(iso: string | null) {
     if (!iso) return null;
     return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
   }
 
-  const ctaLabel = availUnit?.available_count === 0
-    ? "Enquire for Updates"
-    : selectedUnit
-    ? `Get Contact — ${selectedUnit.label}`
-    : "Get Dealer Contact";
-
-  // Variant chip selector — rendered in both mobile card and desktop buy box
   function renderVariantSelector() {
     return (
       <div className={styles.variantSection}>
@@ -641,7 +694,7 @@ export default function PropertyDetail({
 
   return (
     <div className={styles.page}>
-      {/* Top nav */}
+      {/* ── Top nav ── */}
       <div className={styles.topNav}>
         <div className={styles.topNavInner}>
           <Link href="/" className={styles.backBtn} aria-label="Back">←</Link>
@@ -654,56 +707,93 @@ export default function PropertyDetail({
         </div>
       </div>
 
-      {/* Two-column layout wrapper */}
-      <div className={styles.layout}>
-        {/* ── Left column: gallery + content ── */}
-        <div className={styles.leftCol}>
-
-          {/* Gallery */}
-          {hasGallery ? (
-            <>
+      {/* ── Gallery — full width, above the two-column layout ── */}
+      <div className={styles.galleryWrap}>
+        {hasGallery ? (
+          <>
+            <div className={styles.galleryHeroWrap}>
               <img
                 className={styles.galleryHero}
                 src={displayGallery[heroIdx]}
                 alt={property.title}
               />
+              {/* Counter */}
+              <div className={styles.galleryCounter}>
+                {heroIdx + 1} / {displayGallery.length}
+              </div>
+              {/* Nav arrows */}
               {displayGallery.length > 1 && (
-                <div className={styles.thumbStrip}>
-                  {displayGallery.map((src, i) => (
-                    <div
-                      key={i}
-                      className={`${styles.thumb} ${i === heroIdx ? styles.thumbActive : ""}`}
-                      onClick={() => setHeroIdx(i)}
-                    >
-                      <img src={src} alt="" />
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <button
+                    className={`${styles.galleryArrow} ${styles.galleryArrowLeft}`}
+                    onClick={() => setHeroIdx((i) => (i - 1 + displayGallery.length) % displayGallery.length)}
+                    aria-label="Previous photo"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    className={`${styles.galleryArrow} ${styles.galleryArrowRight}`}
+                    onClick={() => setHeroIdx((i) => (i + 1) % displayGallery.length)}
+                    aria-label="Next photo"
+                  >
+                    ›
+                  </button>
+                </>
               )}
-            </>
-          ) : (
-            <div className={styles.galleryPlaceholder}>
-              {PTYPE_ICONS[property.ptype] ?? "🏠"}
             </div>
-          )}
+            {displayGallery.length > 1 && (
+              <div className={styles.thumbStrip}>
+                {displayGallery.map((src, i) => (
+                  <div
+                    key={i}
+                    className={`${styles.thumb} ${i === heroIdx ? styles.thumbActive : ""}`}
+                    onClick={() => setHeroIdx(i)}
+                  >
+                    <img src={src} alt="" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className={styles.galleryPlaceholder}>
+            {PTYPE_ICONS[property.ptype] ?? "🏠"}
+          </div>
+        )}
 
-          {/* Video links */}
-          {videos.length > 0 && (
-            <div className={styles.videoLinks}>
-              {videos.map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noreferrer" className={styles.videoLink}>
-                  🎬 Video tour {videos.length > 1 ? i + 1 : ""}
-                </a>
-              ))}
-            </div>
-          )}
+        {/* Video links */}
+        {videos.length > 0 && (
+          <div className={styles.videoLinks}>
+            {videos.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noreferrer" className={styles.videoLink}>
+                🎬 Video tour {videos.length > 1 ? i + 1 : ""}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
 
-          {/* Header card */}
+      {/* ── Two-column layout ── */}
+      <div className={styles.layout}>
+        {/* ── Left column ── */}
+        <div className={styles.leftCol}>
+
+          {/* §1 Price + Title block */}
           <div className={styles.card}>
-            <div className={styles.priceLine}>
-              <span className={styles.priceMain}>{fmt(displayPrice)}</span>
-              {property.type === "rent" && <span className={styles.pricePer}>/month</span>}
+            {/* Badge row */}
+            <div className={styles.badgeRow}>
               <span className={styles.typeBadge}>{property.type === "rent" ? "For Rent" : "For Sale"}</span>
+              {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified</span>}
+              {property.is_featured && <span className={`${styles.badge} ${styles.badgeFeatured}`}>⭐ Featured</span>}
+            </div>
+            {/* Price */}
+            <div className={styles.priceLine}>
+              <span className={styles.priceMain}>
+                {property.type === "rent"
+                  ? `₹${displayPrice.toLocaleString("en-IN")}`
+                  : fmt(displayPrice)}
+              </span>
+              {property.type === "rent" && <span className={styles.pricePer}>/month</span>}
             </div>
             {property.type === "rent" && displayDeposit && (
               <div className={styles.priceDeposit}>
@@ -715,8 +805,8 @@ export default function PropertyDetail({
               📍 {property.loc}, Kota
               {property.nearest_coaching_hub && ` · 🎓 Near ${property.nearest_coaching_hub}`}
             </div>
+            {/* Stats row */}
             <div className={styles.statRow}>
-              {/* Show BHK from selected unit attrs when selector is hidden (single-unit flat) */}
               {!showSelector && availUnit?.attributes?.bhk ? (
                 <span className={styles.stat}><b>{availUnit.attributes.bhk}</b> BHK</span>
               ) : property.bhk > 0 && !showSelector ? (
@@ -733,16 +823,26 @@ export default function PropertyDetail({
                 </span>
               )}
             </div>
-            <div>
-              {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified</span>}
-              {property.is_featured && <span className={`${styles.badge} ${styles.badgeFeatured}`}>⭐ Featured</span>}
-            </div>
           </div>
 
-          {/* Variant selector — mobile only (desktop version lives in rightCol) */}
+          {/* §2 Key highlights strip */}
+          {highlights.length > 0 && (
+            <div className={styles.highlightsWrap}>
+              <div className={styles.highlightsStrip}>
+                {highlights.map((h) => (
+                  <div key={h.label} className={styles.highlightChip}>
+                    <span className={styles.highlightIcon}>{h.icon}</span>
+                    <span>{h.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* §3 Variant selector — mobile only */}
           {showSelector && (
             <div className={`${styles.card} ${styles.mobileOnly}`}>
-              <div className={styles.sectionTitle}>Select Room Type</div>
+              <div className={styles.sectionTitle}>Room Variants</div>
               {renderVariantSelector()}
               {avail && (
                 <span className={`${styles.availBadge} ${avail.cls}`} style={{ marginTop: 16 }}>
@@ -759,7 +859,7 @@ export default function PropertyDetail({
             </div>
           )}
 
-          {/* Availability for single-unit (no selector) — mobile only */}
+          {/* §3b Availability badge for single-unit — mobile only */}
           {!showSelector && avail && (
             <div className={`${styles.card} ${styles.mobileOnly}`}>
               <span className={`${styles.availBadge} ${avail.cls}`}>{avail.text}</span>
@@ -773,75 +873,70 @@ export default function PropertyDetail({
             </div>
           )}
 
-          {/* Amenities */}
-          {amenities.length > 0 && (
-            <div className={styles.card}>
-              <div className={styles.sectionTitle}>Amenities</div>
-              <div className={styles.amenityGrid}>
-                {amenities.map((a) => (
-                  <div key={a.label} className={styles.amenity}>
-                    <span className={styles.amenityIcon}>{a.icon}</span>
-                    {a.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Features */}
-          {property.features?.length > 0 && (
-            <div className={styles.card}>
-              <div className={styles.sectionTitle}>Features</div>
-              <div className={styles.chips}>
-                {property.features.map((f) => (
-                  <span key={f} className={styles.chip}>{f}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Description */}
+          {/* §4 About / Description */}
           {property.description && (
             <div className={styles.card}>
               <div className={styles.sectionTitle}>About This Property</div>
-              <p style={{ fontSize: 14, color: "var(--ink)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+              <div
+                className={`${styles.descText} ${descExpanded ? styles.descExpanded : styles.descClamped}`}
+              >
                 {property.description}
-              </p>
+              </div>
+              {property.description.length > 200 && (
+                <button
+                  className={styles.readMoreBtn}
+                  onClick={() => setDescExpanded((v) => !v)}
+                >
+                  {descExpanded ? "Show less ↑" : "Read more ↓"}
+                </button>
+              )}
             </div>
           )}
 
-          {/* Rental details */}
+          {/* §5 Room & Rent Details */}
           {property.type === "rent" && (
             <div className={styles.card}>
-              <div className={styles.sectionTitle}>Rental Details</div>
+              <div className={styles.sectionTitle}>Rent & Room Details</div>
               <div className={styles.detailList}>
                 {property.available_from && (
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Available From</span>
+                    <span className={styles.detailLabel}>📅 Available From</span>
                     <span className={styles.detailValue}>{fmtDateStr(property.available_from)}</span>
                   </div>
                 )}
                 {property.min_stay_months && (
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Minimum Stay</span>
+                    <span className={styles.detailLabel}>🗓 Minimum Stay</span>
                     <span className={styles.detailValue}>{property.min_stay_months} month{property.min_stay_months > 1 ? "s" : ""}</span>
                   </div>
                 )}
                 {property.gender_preference && property.gender_preference !== "any" && (
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Gender Preference</span>
-                    <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>{property.gender_preference}</span>
+                    <span className={styles.detailLabel}>👤 For</span>
+                    <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>
+                      {property.gender_preference === "boys" ? "Boys Only" : "Girls Only"}
+                    </span>
                   </div>
                 )}
                 {property.furnishing_status && (
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Furnishing</span>
-                    <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>{property.furnishing_status.replace("-", " ")}</span>
+                    <span className={styles.detailLabel}>🛋️ Furnishing</span>
+                    <span className={styles.detailValue} style={{ textTransform: "capitalize" }}>
+                      {property.furnishing_status.replace("-", " ")}
+                    </span>
+                  </div>
+                )}
+                {property.floor_number != null && (
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>🏢 Floor</span>
+                    <span className={styles.detailValue}>
+                      {property.floor_number}{property.total_floors ? ` of ${property.total_floors}` : ""}
+                    </span>
                   </div>
                 )}
                 {property.nearest_coaching_hub && (
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Nearest Coaching</span>
+                    <span className={styles.detailLabel}>🎓 Nearest Coaching</span>
                     <span className={styles.detailValue}>{property.nearest_coaching_hub}</span>
                   </div>
                 )}
@@ -849,7 +944,136 @@ export default function PropertyDetail({
             </div>
           )}
 
-          {/* Distance calculator */}
+          {/* §6 Amenities grid */}
+          {(() => {
+            const base = [
+              { icon: "🍽️", label: "Meals Included", val: property.meals_included },
+              { icon: "📶", label: "WiFi Included", val: property.wifi_included },
+              { icon: "🚗", label: "Parking", val: property.parking_available },
+              { icon: "🚿", label: "Attached Bath", val: property.attached_bathroom },
+            ].filter((a) => a.val);
+            // Common-area amenities from the hostel wizard (kitchen, RO, lift, gym, etc.)
+            // De-duplicated against the base list (wifi already covered above).
+            const fromHostelMeta = (hm?.common_amenities ?? [])
+              .filter((k) => k !== "wifi")
+              .map((k) => COMMON_AMENITY_LABELS[k])
+              .filter((v): v is { label: string; icon: string } => Boolean(v));
+            const all = [...base, ...fromHostelMeta];
+            const parkingTypes = hm?.parking_enabled
+              ? (hm.parking_types ?? []).map((k) => (k === "two_wheeler" ? "2 Wheeler" : "Car"))
+              : [];
+            const extras = [
+              ...(property.features?.length > 0 && !isHostelOrPG ? property.features : []),
+              ...parkingTypes.map((p) => `Parking: ${p}`),
+            ];
+            if (all.length === 0 && extras.length === 0) return null;
+            return (
+              <div className={styles.card}>
+                <div className={styles.sectionTitle}>Amenities</div>
+                <div className={styles.amenityGrid}>
+                  {all.map((a) => (
+                    <div key={a.label} className={styles.amenity}>
+                      <span className={styles.amenityIcon}>{a.icon}</span>
+                      {a.label}
+                    </div>
+                  ))}
+                </div>
+                {extras.length > 0 && (
+                  <div className={styles.chips} style={{ marginTop: 12 }}>
+                    {extras.map((f) => (
+                      <span key={f} className={styles.chip}>{f}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* §7 Hostel rules — only for hostel/PG */}
+          {isHostelOrPG && (
+            <div className={styles.hostelRulesCard}>
+              <div className={styles.hostelRulesTitle}>🏠 {hm?.pg_name || property.ptype} Rules &amp; Policy</div>
+              <div className={styles.hostelRulesList}>
+                {property.gender_preference && property.gender_preference !== "any" && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>
+                      {property.gender_preference === "boys" ? "👦" : "👧"}
+                    </span>
+                    <span>
+                      {property.gender_preference === "boys" ? "Boys only hostel" : "Girls only hostel"}
+                    </span>
+                  </div>
+                )}
+                {property.meals_included && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>🍽️</span>
+                    <span>Meals provided (check timing with partner)</span>
+                  </div>
+                )}
+                {property.min_stay_months && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>📅</span>
+                    <span>Minimum stay: {property.min_stay_months} month{property.min_stay_months > 1 ? "s" : ""}</span>
+                  </div>
+                )}
+                {displayDeposit && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>💰</span>
+                    <span>Security deposit: ₹{displayDeposit.toLocaleString("en-IN")} (refundable)</span>
+                  </div>
+                )}
+
+                {/* Rich fields from the PG/Hostel wizard, when present */}
+                {hm?.tenant_types && hm.tenant_types.length > 0 && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>🎓</span>
+                    <span>For: {hm.tenant_types.map((t) => TENANT_TYPE_LABELS[t] ?? t).join(" & ")}</span>
+                  </div>
+                )}
+                {hm?.gate_timing_enabled && hm.gate_closing_time && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>🚪</span>
+                    <span>Gate closes at {gateTimeLabel(hm.gate_closing_time)}</span>
+                  </div>
+                )}
+                {hm?.notice_period && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>📝</span>
+                    <span>Notice period: {noticePeriodLabel(hm.notice_period)}</span>
+                  </div>
+                )}
+                {hm?.services && hm.services.length > 0 && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>🧺</span>
+                    <span>
+                      Services: {hm.services.map((s) => SERVICE_LABELS[s]?.label ?? s).join(", ")}
+                    </span>
+                  </div>
+                )}
+                {hm?.house_rules && hm.house_rules.length > 0 && hm.house_rules.map((r) => (
+                  <div key={r} className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>🚫</span>
+                    <span>{HOUSE_RULE_LABELS[r] ?? r}</span>
+                  </div>
+                ))}
+                {hm?.landmark && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>📍</span>
+                    <span>Landmark: {hm.landmark}</span>
+                  </div>
+                )}
+
+                {!hm && (
+                  <div className={styles.hostelRule}>
+                    <span className={styles.hostelRuleIcon}>ℹ️</span>
+                    <span>Contact partner to confirm entry timing, visitor policy &amp; food menu</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* §8 Distance & coaching */}
           {showDistWidget && (
             <div className={styles.card}>
               <div className={styles.sectionTitle}>Distance from Your Location</div>
@@ -857,26 +1081,55 @@ export default function PropertyDetail({
             </div>
           )}
 
-          {/* Dealer info */}
+          {/* §9 Dealer card */}
           {dealer && (
             <div className={styles.card}>
               <div className={styles.sectionTitle}>Listed By</div>
-              <div className={styles.dealerRow}>
+              <div className={styles.dealerCard}>
                 <div className={styles.dealerAvatar}>{dealer.name[0]}</div>
-                <div>
+                <div className={styles.dealerInfo}>
                   <div className={styles.dealerName}>{dealer.name}</div>
                   <div className={styles.dealerRole}>{dealer.role}</div>
                   <div className={styles.dealerStats}>
                     <span><b>{dealer.years}</b> yrs exp</span>
-                    <span><b>⭐{dealer.rating}</b> rating</span>
+                    <span>⭐ <b>{dealer.rating}</b> rating</span>
                   </div>
                 </div>
+                {!isFull && (
+                  <button className={styles.dealerCtaBtn} onClick={openSheet}>
+                    Contact
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* §10 Reviews placeholder */}
+          <div className={styles.card}>
+            <div className={styles.sectionTitle}>Tenant Reviews</div>
+            <div className={styles.reviewsPlaceholder}>
+              <div className={styles.reviewStars}>★★★★★</div>
+              <div className={styles.reviewMsg}>No reviews yet for this property.</div>
+              <div className={styles.reviewSub}>
+                Reviews from verified tenants will appear here.
+              </div>
+            </div>
+          </div>
+
+          {/* §11 Similar properties */}
+          {similarProps.length > 0 && (
+            <div className={styles.card}>
+              <div className={styles.sectionTitle}>Similar Properties</div>
+              <div className={styles.similarScroll}>
+                {similarProps.map((p) => (
+                  <SimilarCard key={p.id} p={p} />
+                ))}
               </div>
             </div>
           )}
         </div>
 
-        {/* ── Right column: desktop buy box ── */}
+        {/* ── Right column: sticky buy box ── */}
         <div className={styles.rightCol}>
           <div className={styles.buyBox}>
             {/* Price */}
@@ -899,7 +1152,7 @@ export default function PropertyDetail({
             {/* Variant selector */}
             {showSelector && (
               <>
-                <div className={styles.sectionTitle} style={{ marginTop: 16 }}>Select Room Type</div>
+                <div className={styles.sectionTitle} style={{ marginTop: 16 }}>Room Variants</div>
                 {renderVariantSelector()}
               </>
             )}
@@ -918,15 +1171,14 @@ export default function PropertyDetail({
               </div>
             )}
 
-            {/* CTA */}
-            <button
-              className={`${styles.buyCtaBtn} ${availUnit?.available_count === 0 ? styles.buyCtaBtnFull : ""}`}
-              onClick={openSheet}
-            >
-              {ctaLabel}
-            </button>
+            {/* CTA — hidden when full */}
+            {!isFull && (
+              <button className={styles.buyCtaBtn} onClick={openSheet}>
+                {ctaLabel}
+              </button>
+            )}
 
-            {/* Property mini-info */}
+            {/* Location snippet */}
             <div style={{ marginTop: 16, fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
               📍 {property.loc}, Kota
               {property.nearest_coaching_hub && (
@@ -941,20 +1193,22 @@ export default function PropertyDetail({
         </div>
       </div>
 
-      {/* Sticky CTA bar — mobile only (hidden on desktop via CSS) */}
-      <div className={styles.ctaBar}>
-        <div className={styles.ctaBarInner}>
-          <div className={styles.ctaPrice}>
-            <div className={styles.ctaPriceMain}>{fmt(displayPrice)}</div>
-            <div className={styles.ctaPriceSub}>{property.type === "rent" ? "per month" : "sale price"}</div>
+      {/* ── Mobile sticky CTA bar — hidden when full ── */}
+      {!isFull && (
+        <div className={styles.ctaBar}>
+          <div className={styles.ctaBarInner}>
+            <div className={styles.ctaPrice}>
+              <div className={styles.ctaPriceMain}>{fmt(displayPrice)}</div>
+              <div className={styles.ctaPriceSub}>{property.type === "rent" ? "per month" : "sale price"}</div>
+            </div>
+            <button className={styles.ctaBtn} onClick={openSheet}>
+              {ctaLabel}
+            </button>
           </div>
-          <button className={styles.ctaBtn} onClick={openSheet}>
-            {ctaLabel}
-          </button>
         </div>
-      </div>
+      )}
 
-      {/* Lead gateway sheet */}
+      {/* ── Lead gateway sheet ── */}
       <LeadSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}

@@ -39,6 +39,20 @@ export type Property = {
   desc: string;
 };
 
+export type Locality = {
+  id: string;
+  name: string;
+  slug: string;
+  parent_id: string | null;
+  level: 'city' | 'locality' | 'sublocality';
+  latitude: number | null;
+  longitude: number | null;
+  status: 'live' | 'coming_soon';
+  sort_order: number | null;
+  aliases: string[];
+  created_at: string;
+};
+
 export type UnitAttributes = {
   bhk?: number;
   occupancy?: 'single' | 'double' | 'triple';
@@ -64,6 +78,35 @@ export type PropertyUnit = {
   attributes?: UnitAttributes | null;
   unit_photos?: string[] | null;
   last_confirmed_at?: string | null;
+  maintenance?: number | null;
+  area_sqft?: number | null;
+  floor_num?: number | null;
+};
+
+export type HostelMeta = {
+  pg_name?: string;
+  user_type?: "owner" | "manager" | "agent";
+  address?: string;
+  pincode?: string | null;
+  landmark?: string | null;
+  operational_since?: string | null;
+  present_on_floor?: string | null;
+  room_categories?: string[];
+  target_gender?: "male" | "female" | "both";
+  tenant_types?: string[];
+  house_rules?: string[];
+  notice_period?: string;
+  gate_timing_enabled?: boolean;
+  gate_closing_time?: string | null;
+  services?: string[];
+  food_provided?: boolean;
+  common_amenities?: string[];
+  parking_enabled?: boolean;
+  parking_types?: string[];
+  usp_category?: string | null;
+  usp_text?: string | null;
+  photo_tags?: Record<string, string>;
+  photo_sections?: Record<string, string>;
 };
 
 export type PropertyFull = {
@@ -98,6 +141,9 @@ export type PropertyFull = {
   total_floors: number | null;
   lat: number | null;
   lng: number | null;
+  locality_id: string | null;
+  amenities: Record<string, boolean> | null;
+  hostel_meta: HostelMeta | null;
   verified: boolean;
   is_verified: boolean;
   is_featured: boolean;

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import {
   AREA_SLUGS, TYPE_SLUGS, HUB_TO_SLUG, TYPE_TO_SLUG,
@@ -8,6 +8,8 @@ import {
 } from "@/lib/seoHelpers";
 import { PTYPE_ICONS, COACHING_HUBS } from "@/lib/constants";
 import { SeoPageShell } from "@/components/SeoGrid";
+import { getLocalityWithParent, getPropertiesByLocality } from "@/lib/queries/localities";
+import LocalityPage from "./LocalityPage";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -23,7 +25,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const area  = AREA_SLUGS[slug];
   const ptype = TYPE_SLUGS[slug];
-  if (!area && !ptype) return { title: "Not Found" };
+
+  if (!area && !ptype) {
+    // Try DB locality
+    const localityResult = await getLocalityWithParent(slug).catch(() => null);
+    if (localityResult) {
+      const { locality } = localityResult;
+      const base = getBaseUrl();
+      const title = `Properties in ${locality.name}, Kota`;
+      const desc = locality.status === "coming_soon"
+        ? `${locality.name}, Kota — coming soon on Prop100. Register to be notified when listings go live.`
+        : `Find rental properties in ${locality.name}, Kota. Hostels, PGs, flats and rooms available.`;
+      return {
+        title: `${title} | Prop100`,
+        description: desc,
+        ...(base && { alternates: { canonical: `${base}/kota/${slug}` } }),
+        openGraph: { title, description: desc },
+      };
+    }
+    return { title: "Not Found" };
+  }
 
   const title = area ? areaTypeTitle(area) : typeTitle(ptype);
   const desc  = area ? areaTypeDesc(area) : typeDesc(ptype);
@@ -38,6 +59,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function KotaSlugPage({ params }: Props) {
   const { slug } = await params;
+
+  // Check DB localities first — covers both live listing pages and coming-soon pages
+  const localityResult = await getLocalityWithParent(slug).catch(() => null);
+  if (localityResult) {
+    const { locality, parent } = localityResult;
+    // Sublocality: redirect to parent locality page
+    if (locality.level === "sublocality" && parent) {
+      redirect(`/kota/${parent.slug}`);
+    }
+    // Locality or city: render the locality page component
+    const properties = locality.status === "live"
+      ? await getPropertiesByLocality(slug).catch(() => [])
+      : [];
+    return <LocalityPage locality={locality} properties={properties} />;
+  }
+
   const area  = AREA_SLUGS[slug];
   const ptype = TYPE_SLUGS[slug];
   if (!area && !ptype) notFound();

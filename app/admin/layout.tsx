@@ -57,6 +57,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 Properties
               </Link>
+              <Link
+                href="/admin/requests"
+                style={{
+                  color: pathname === "/admin/requests" ? "#fff" : "#7a8fa3",
+                  fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 6,
+                  background: pathname === "/admin/requests" ? "rgba(255,255,255,.12)" : "transparent",
+                  textDecoration: "none", transition: "all 0.15s",
+                }}
+              >
+                Area Requests
+              </Link>
             </div>
           </div>
           <button

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     available_from, min_stay_months, floor_number, total_floors,
     attached_bathroom, parking_available, wifi_included,
     nearest_coaching_hub, features, description,
-    photoPaths, videoPaths, units,
+    photoPaths, videoPaths, units, hostel_meta,
   } = body as Record<string, unknown>;
 
   if (!type || !ptype || !loc) {
@@ -75,46 +75,56 @@ export async function POST(req: NextRequest) {
     ? String(nearest_coaching_hub)
     : null;
 
+  const insertRow: Record<string, unknown> = {
+    type: String(type),
+    ptype: String(ptype),
+    loc: String(loc),
+    bhk: bhkNum,
+    baths: Number(baths) || 0,
+    title,
+    slug,
+    price: Number(price) || 0,
+    rent_per_month: rent_per_month ? Number(rent_per_month) : null,
+    deposit_amount: deposit_amount ? Number(deposit_amount) : null,
+    sqft: sqft ? Number(sqft) : null,
+    furnish: furnishVal,
+    furnishing_status: furnishVal,
+    meals_included: Boolean(meals_included),
+    gender_preference: genderVal,
+    available_from: available_from ? String(available_from) : null,
+    min_stay_months: min_stay_months ? Number(min_stay_months) : null,
+    floor_number: floor_number ? Number(floor_number) : null,
+    total_floors: total_floors ? Number(total_floors) : null,
+    attached_bathroom: Boolean(attached_bathroom),
+    parking_available: Boolean(parking_available),
+    wifi_included: Boolean(wifi_included),
+    nearest_coaching_hub: hubVal,
+    features: Array.isArray(features) ? features : [],
+    description: description ? String(description) : "",
+    img: photoArr[0] ?? videoArr[0] ?? null,
+    gallery: photoArr,
+    videos: videoArr,
+    dealer_id: session.id,
+    is_approved: false,
+    is_featured: false,
+    is_verified: false,
+    verified: false,
+    photos: photoArr.length,
+    posted_days: 0,
+    property_status: "available",
+  };
+
+  // Only reference hostel_meta when the caller actually sends it (PG/Hostel flow).
+  // Omitting the key entirely — rather than sending null — means standard
+  // rent/sale submissions keep working even before the hostel_meta migration
+  // (supabase/migration_hostel_meta.sql) has been run on this Supabase project.
+  if (hostel_meta && typeof hostel_meta === "object") {
+    insertRow.hostel_meta = hostel_meta;
+  }
+
   const { data, error } = await db
     .from("properties")
-    .insert({
-      type: String(type),
-      ptype: String(ptype),
-      loc: String(loc),
-      bhk: bhkNum,
-      baths: Number(baths) || 0,
-      title,
-      slug,
-      price: Number(price) || 0,
-      rent_per_month: rent_per_month ? Number(rent_per_month) : null,
-      deposit_amount: deposit_amount ? Number(deposit_amount) : null,
-      sqft: sqft ? Number(sqft) : null,
-      furnish: furnishVal,
-      furnishing_status: furnishVal,
-      meals_included: Boolean(meals_included),
-      gender_preference: genderVal,
-      available_from: available_from ? String(available_from) : null,
-      min_stay_months: min_stay_months ? Number(min_stay_months) : null,
-      floor_number: floor_number ? Number(floor_number) : null,
-      total_floors: total_floors ? Number(total_floors) : null,
-      attached_bathroom: Boolean(attached_bathroom),
-      parking_available: Boolean(parking_available),
-      wifi_included: Boolean(wifi_included),
-      nearest_coaching_hub: hubVal,
-      features: Array.isArray(features) ? features : [],
-      description: description ? String(description) : "",
-      img: photoArr[0] ?? videoArr[0] ?? null,
-      gallery: photoArr,
-      videos: videoArr,
-      dealer_id: session.id,
-      is_approved: false,
-      is_featured: false,
-      is_verified: false,
-      verified: false,
-      photos: photoArr.length,
-      posted_days: 0,
-      property_status: "available",
-    })
+    .insert(insertRow)
     .select("id")
     .single();
 
@@ -128,6 +138,7 @@ export async function POST(req: NextRequest) {
       deposit_amount?: unknown; total_count?: unknown; available_count?: unknown;
       has_ac?: unknown; has_cooler?: unknown; attached_bath?: unknown;
       meals_included?: unknown; description?: unknown; sort_order?: unknown;
+      attributes?: unknown;
     };
     const toInsert = (unitRows as UnitInput[])
       .filter((u) => u.label && Number(u.price_per_month) > 0)
@@ -145,6 +156,7 @@ export async function POST(req: NextRequest) {
         meals_included: Boolean(u.meals_included),
         description: u.description ? String(u.description) : null,
         sort_order: Number(u.sort_order ?? i),
+        attributes: u.attributes && typeof u.attributes === "object" ? u.attributes : null,
       }));
     if (toInsert.length > 0) {
       await db.from("property_units").insert(toInsert);

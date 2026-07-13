@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Area, PublicDealer, Property } from "@/lib/types";
+import { Area, Locality, PublicDealer, Property } from "@/lib/types";
 import { fmt } from "@/lib/format";
 
-type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[] };
+type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities?: Locality[] };
 type Tab = "sale" | "rent" | "PG" | "Plot" | "Shop";
 type GateCtx = { kind?: "dealer"; propId?: number; dealerId?: number; title: string; dealerName?: string; price?: number };
 type ChatMsg =
@@ -15,7 +15,7 @@ type ChatMsg =
 
 const COACH_AREA_IMG = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80";
 
-export default function SiteClient({ properties, dealers, areas }: Props) {
+export default function SiteClient({ properties, dealers, areas, localities = [] }: Props) {
   const router = useRouter();
   /* ---------------- state ---------------- */
   const [mobOpen, setMobOpen] = useState(false);
@@ -277,7 +277,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
       chatStarted.current = true;
       chatHistory.current = [];
       setMsgs([{ who: "bot", text: "Hi! 👋 I'm your Kota property assistant. Tell me what you're looking for and I'll find it.\n\nआप हिंदी में भी पूछ सकते हैं! 😊" }]);
-      setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a dealer"]);
+      setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a partner"]);
     }
   }
   function pushMsg(m: ChatMsg) { setMsgs((prev) => [...prev, m]); }
@@ -290,7 +290,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
     if (/^(start over|reset|शुरू करें|restart)/i.test(text)) {
       chatHistory.current = [];
       setMsgs([{ who: "bot", text: "Let's start again 🙂 What are you looking for?" }]);
-      setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a dealer"]);
+      setQreplies(["🏠 Homes to buy", "🔑 Homes for rent", "🎓 Near coaching", "📞 Talk to a partner"]);
       return;
     }
 
@@ -340,7 +340,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         if (data.quickReplies?.length) {
           setQreplies(data.quickReplies);
         } else {
-          setQreplies(["Show more options", "📞 Talk to a dealer", "🔁 Start over"]);
+          setQreplies(["Show more options", "📞 Talk to a partner", "🔁 Start over"]);
         }
       })
       .catch(() => {
@@ -354,6 +354,22 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
   const areaCount = (name: string) => properties.filter((p) => p.loc === name).length;
   const dealerCount = (name: string) => properties.filter((p) => p.dealer.name === name).length;
 
+  // Area image lookup — areas table has the photos, localities have status/sort
+  const areaImageMap = useMemo(
+    () => Object.fromEntries(areas.map((a) => [a.name, a.img])),
+    [areas]
+  );
+
+  // Sorted localities: live first (by sort_order), then coming_soon (by sort_order)
+  const sortedLocalities = useMemo(
+    () =>
+      [...localities].sort((a, b) => {
+        if (a.status !== b.status) return a.status === "live" ? -1 : 1;
+        return (a.sort_order ?? 999) - (b.sort_order ?? 999);
+      }),
+    [localities]
+  );
+
   /* ===================================================================== */
   return (
     <>
@@ -364,7 +380,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
           <a href="#listings" onClick={() => setTab("sale")}>Buy</a>
           <a href="#listings" onClick={() => setTab("rent")}>Rent</a>
           <a href="#areas">Areas</a>
-          <a href="#dealers">Dealers</a>
+          <a href="#dealers">Partners</a>
           <a href="#why">Why Us</a>
           <a href="#about">About</a>
           <a href="#contact">Contact</a>
@@ -377,7 +393,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         <a href="#listings" onClick={() => setTab("sale")}>Buy</a>
         <a href="#listings" onClick={() => setTab("rent")}>Rent</a>
         <a href="#areas">Explore Areas</a>
-        <a href="#dealers">Our Dealers</a>
+        <a href="#dealers">Our Partners</a>
         <a href="#why">Why Choose Us</a>
         <a href="#process">How It Works</a>
         <a href="#about">About Us</a>
@@ -387,7 +403,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
       {/* HERO + SEARCH */}
       <div className="hero" id="home"><div className="wrap">
         <h1>Find your home in Kota</h1>
-        <p>Verified houses, flats, plots &amp; rentals — direct from trusted dealers</p>
+        <p>Verified houses, flats, plots &amp; rentals — direct from trusted partners</p>
         <div className="sbox">
           <div className="tabs">
             {(["sale", "rent", "PG", "Plot", "Shop"] as Tab[]).map((tb) => (
@@ -399,7 +415,13 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
           <div className="sfields">
             <select value={searchLoc} onChange={(e) => setSearchLoc(e.target.value)}>
               <option value="">All localities in Kota</option>
-              {areas.map((a) => <option key={a.name}>{a.name}</option>)}
+              {sortedLocalities.length > 0
+                ? sortedLocalities.map((l) => (
+                    <option key={l.slug} value={l.name}>
+                      {l.name}{l.status === "coming_soon" ? " (Coming Soon)" : ""}
+                    </option>
+                  ))
+                : areas.map((a) => <option key={a.name}>{a.name}</option>)}
             </select>
             <select value={searchType} onChange={(e) => setSearchType(e.target.value)}>
               <option value="">Property type</option>
@@ -413,8 +435,8 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         </div>
         <div className="hstats">
           <span><b>{properties.length}</b> Properties</span>
-          <span><b>{areas.length}</b> Areas</span>
-          <span><b>{dealers.length}</b> Verified Dealers</span>
+          <span><b>{localities.length > 0 ? localities.length : areas.length}</b> Areas</span>
+          <span><b>{dealers.length}</b> Verified Partners</span>
           <span><b>₹0</b> Buyer Brokerage</span>
         </div>
       </div></div>
@@ -424,12 +446,26 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         <h2 className="sec">Explore Kota area-wise</h2>
         <p className="sub">Tap an area to see all homes available there</p>
         <div className="areagrid">
-          {areas.slice(0, 8).map((a) => (
-            <div className="areacard" key={a.name} onClick={() => goArea(a.name)}>
-              <img src={a.img} loading="lazy" alt={a.name} />
-              <div className="ov"><b>{a.name}</b><span>{areaCount(a.name)} homes{a.coaching ? " · 🎓" : ""}</span></div>
-            </div>
-          ))}
+          {(sortedLocalities.length > 0 ? sortedLocalities : areas.map((a) => ({ name: a.name, slug: a.name, status: "live" as const, sort_order: 0, id: a.name, parent_id: null, level: "locality" as const, latitude: null, longitude: null, aliases: [], created_at: "" }))).slice(0, 8).map((l) => {
+            const isComingSoon = l.status === "coming_soon";
+            const img = areaImageMap[l.name] ?? "";
+            return (
+              <div
+                className="areacard"
+                key={l.slug ?? l.name}
+                onClick={() => sortedLocalities.length > 0 ? router.push(`/kota/${l.slug}`) : goArea(l.name)}
+                style={isComingSoon ? { opacity: 0.55, filter: "grayscale(60%)", cursor: "pointer" } : {}}
+              >
+                {img
+                  ? <img src={img} loading="lazy" alt={l.name} />
+                  : <div style={{ width: "100%", height: "100%", background: "#c8d0da" }} />}
+                <div className="ov">
+                  <b style={isComingSoon ? { fontStyle: "italic", color: "#f59e0b" } : {}}>{l.name}</b>
+                  <span>{isComingSoon ? "Coming soon" : `${areaCount(l.name)} homes`}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div></section>
 
@@ -482,7 +518,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                   {p.baths ? <span><b>{p.baths}</b> Bath</span> : null}
                   {p.sqft ? <span><b>{p.sqft.toLocaleString("en-IN")}</b> sqft</span> : null}
                 </div>
-                <div className="ft"><div className="dl">Dealer: <b>{p.dealer.name}</b></div><button className="ct" onClick={p.slug ? goDetail : () => setModalProp(p)}>Contact</button></div>
+                <div className="ft"><div className="dl">Partner: <b>{p.dealer.name}</b></div><button className="ct" onClick={p.slug ? goDetail : () => setModalProp(p)}>Contact</button></div>
               </div>
             </div>
             );
@@ -500,8 +536,8 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
 
       {/* DEALERS */}
       <section className="dealers" id="dealers"><div className="wrap">
-        <h2 className="sec">Our verified dealers</h2>
-        <p className="sub">Trusted local property dealers across Kota</p>
+        <h2 className="sec">Our verified partners</h2>
+        <p className="sub">Trusted local property partners across Kota</p>
         <div className="dgrid">
           {dealers.map((d) => (
             <div className="dcard" key={d.id}>
@@ -512,7 +548,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                 <div><b>{d.years}</b>Years</div>
                 <div><b>⭐{d.rating}</b>Rating</div>
               </div>
-              <button className="cl" onClick={() => dealerLead(d.name, d.id)}>📞 Contact dealer</button>
+              <button className="cl" onClick={() => dealerLead(d.name, d.id)}>📞 Contact partner</button>
             </div>
           ))}
         </div>
@@ -524,7 +560,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         <p className="sub">Simple, honest and made for Kota</p>
         <div className="whygrid">
           <div className="whycard"><div className="ic">🛡️</div><h4>Verified listings</h4><p>Real photos, real prices. No fake posts.</p></div>
-          <div className="whycard"><div className="ic">🤝</div><h4>Direct to dealer</h4><p>Talk straight to the owner/dealer.</p></div>
+          <div className="whycard"><div className="ic">🤝</div><h4>Direct to partner</h4><p>Talk straight to the owner/partner.</p></div>
           <div className="whycard"><div className="ic">₹</div><h4>No buyer brokerage</h4><p>Browsing and contacting is free.</p></div>
           <div className="whycard"><div className="ic">📱</div><h4>Easy on mobile</h4><p>Fast and simple on any phone.</p></div>
         </div>
@@ -537,7 +573,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
         <div className="steps">
           <div className="step"><div className="n">1</div><h4>Search</h4><p>Pick area, budget &amp; type.</p></div>
           <div className="step"><div className="n">2</div><h4>Shortlist</h4><p>Compare verified homes.</p></div>
-          <div className="step"><div className="n">3</div><h4>Contact</h4><p>Call or WhatsApp the dealer.</p></div>
+          <div className="step"><div className="n">3</div><h4>Contact</h4><p>Call or WhatsApp the partner.</p></div>
           <div className="step"><div className="n">4</div><h4>Move in</h4><p>Visit and finalise the deal.</p></div>
         </div>
       </div></section>
@@ -548,7 +584,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
           <img src={COACH_AREA_IMG} alt="About Prop100" />
           <div>
             <h2>About Prop100</h2>
-            <p>We are a Kota-based property platform connecting buyers and tenants directly with trusted local dealers. We started to fix a simple problem — fake listings, hidden prices and too many middlemen. Every home here is verified, with real photos and a direct line to the dealer.</p>
+            <p>We are a Kota-based property platform connecting buyers and tenants directly with trusted local partners. We started to fix a simple problem — fake listings, hidden prices and too many middlemen. Every home here is verified, with real photos and a direct line to the partner.</p>
             <p>From Talwandi to Kunhadi, we cover every corner of Kota — and we&apos;re especially handy for families looking near the coaching hubs.</p>
             <div className="aboutstats">
               <div><b>{properties.length}+</b><span>Properties</span></div>
@@ -580,7 +616,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
             <a href="#listings" onClick={() => setTab("sale")}>Buy property</a>
             <a href="#listings" onClick={() => setTab("rent")}>Rent a home</a>
             <a href="#areas">Explore areas</a>
-            <a href="#dealers">Our dealers</a>
+            <a href="#dealers">Our partners</a>
             <a href="#why">Why choose us</a>
             <a href="#about">About us</a>
             <a onClick={() => setAdminOpen(true)} style={{ cursor: "pointer" }}>📊 Track deals (Admin)</a>
@@ -620,22 +656,22 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                 {unlock.has(modalProp.id) ? (
                   revealPhones[modalProp.id] ? (
                     <div className="reveal">
-                      <div className="tick">✓ Your details are shared with the dealer.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
+                      <div className="tick">✓ Your details are shared with the partner.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
                       <a className="btn" href={"tel:+" + revealPhones[modalProp.id]}>📞 Call {modalProp.dealer.name.split(" ")[0]}</a>
-                      <a className="btn wa" href={`https://wa.me/${revealPhones[modalProp.id]}?text=${encodeURIComponent("Hi, I am interested in " + modalProp.title + " (Prop100)")}`} target="_blank" rel="noreferrer">💬 WhatsApp dealer</a>
-                      <p className="refnote">Mention this reference to the dealer so your deal stays linked to Prop100.</p>
+                      <a className="btn wa" href={`https://wa.me/${revealPhones[modalProp.id]}?text=${encodeURIComponent("Hi, I am interested in " + modalProp.title + " (Prop100)")}`} target="_blank" rel="noreferrer">💬 WhatsApp partner</a>
+                      <p className="refnote">Mention this reference to the partner so your deal stays linked to Prop100.</p>
                     </div>
                   ) : (
                     <div className="reveal">
                       <div className="tick">✓ Your number was verified for this property.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
                       <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price })}>Verify again to get contact</button>
-                      <p className="refnote">Re-verify your number to reveal the dealer&apos;s contact.</p>
+                      <p className="refnote">Re-verify your number to reveal the partner&apos;s contact.</p>
                     </div>
                   )
                 ) : (
                   <div className="lock">
-                    <div className="lk">🔒</div><h4>Dealer contact is protected</h4>
-                    <p>We connect you directly to the dealer — no middlemen. Share your details once to unlock the phone &amp; WhatsApp.</p>
+                    <div className="lk">🔒</div><h4>Partner contact is protected</h4>
+                    <p>We connect you directly to the partner — no middlemen. Share your details once to unlock the phone &amp; WhatsApp.</p>
                     <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price })}>Get contact details</button>
                   </div>
                 )}
@@ -694,7 +730,7 @@ export default function SiteClient({ properties, dealers, areas }: Props) {
                 <button className="btn" onClick={sendOtp} disabled={submitting}>
                   {submitting ? "Saving…" : "Get contact details →"}
                 </button>
-                <p className="refnote">🔒 Your details are shared only with this dealer — no spam, no brokerage fee.</p>
+                <p className="refnote">🔒 Your details are shared only with this partner — no spam, no brokerage fee.</p>
               </>
             ) : (
               <>

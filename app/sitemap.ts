@@ -21,8 +21,28 @@ async function getApprovedSlugs(): Promise<string[]> {
   }
 }
 
+async function getLiveLocalitySlugs(): Promise<string[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return [];
+  try {
+    const db = createClient(url, key, { auth: { persistSession: false } });
+    const { data } = await db
+      .from("localities")
+      .select("slug")
+      .eq("status", "live")
+      .eq("level", "locality");
+    return (data ?? []).map((r: { slug: string }) => r.slug).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const slugs = await getApprovedSlugs();
+  const [slugs, localitySlugs] = await Promise.all([
+    getApprovedSlugs(),
+    getLiveLocalitySlugs(),
+  ]);
   const now = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [
@@ -36,6 +56,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: now,
     changeFrequency: "weekly" as const,
     priority: 0.9,
+  }));
+
+  // /kota/[locality] — live localities from DB
+  const localityPages: MetadataRoute.Sitemap = localitySlugs.map((s) => ({
+    url: `${BASE}/kota/${s}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: 0.85,
   }));
 
   // /kota/[area] — 14 pages
@@ -85,8 +113,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     ...staticPages,
     ...propertyPages,
-    ...hubPages,       // coaching pages first — highest traffic intent
+    ...hubPages,          // coaching pages first — highest traffic intent
     ...hubTypePages,
+    ...localityPages,     // new DB-backed locality pages
     ...typePages,
     ...areaPages,
     ...areaTypePages,

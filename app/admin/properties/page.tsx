@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { LoadingBar } from "@/components/LoadingBar";
 import { fmt } from "@/lib/format";
+import { HostelMeta } from "@/lib/types";
+import {
+  HOUSE_RULE_LABELS, SERVICE_LABELS, COMMON_AMENITY_LABELS,
+  TENANT_TYPE_LABELS, PARKING_TYPE_LABELS, gateTimeLabel, noticePeriodLabel,
+} from "@/lib/hostelLabels";
 import styles from "./styles.module.css";
 
 type PropRow = {
@@ -24,6 +29,7 @@ type PropRow = {
   features: string[] | null;
   description: string | null;
   created_at: string;
+  hostel_meta: HostelMeta | null;
   dealers: { name: string; phone: string; is_active: boolean; role: string | null } | null;
 };
 
@@ -155,7 +161,7 @@ export default function AdminPropertiesPage() {
             {filter === "pending" ? "Nothing pending — all clear!" : "No properties yet"}
           </div>
           <div style={{ fontSize: 14 }}>
-            {filter === "pending" ? "Switch to 'All Properties' to see live listings." : "Dealers can submit via their dashboard."}
+            {filter === "pending" ? "Switch to 'All Properties' to see live listings." : "Partners can submit via their dashboard."}
           </div>
         </div>
       ) : (
@@ -283,10 +289,54 @@ export default function AdminPropertiesPage() {
                     </div>
                   )}
 
-                  {/* Dealer / owner info */}
+                  {/* PG/Hostel wizard details — only present for the new hostel flow */}
+                  {p.hostel_meta && (
+                    <div style={{ background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 8 }}>
+                        PG / Hostel Details
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--ink)" }}>
+                        {p.hostel_meta.pg_name && (
+                          <div><strong>{p.hostel_meta.pg_name}</strong>{p.hostel_meta.user_type && <span style={{ color: "var(--muted)" }}> — listed by {p.hostel_meta.user_type}</span>}</div>
+                        )}
+                        {p.hostel_meta.address && (
+                          <div>📍 {p.hostel_meta.address}{p.hostel_meta.landmark ? `, near ${p.hostel_meta.landmark}` : ""}{p.hostel_meta.pincode ? ` — ${p.hostel_meta.pincode}` : ""}</div>
+                        )}
+                        {p.hostel_meta.operational_since && (
+                          <div>🗓 Running since {p.hostel_meta.operational_since}{p.hostel_meta.present_on_floor ? ` · Floor: ${p.hostel_meta.present_on_floor}` : ""}</div>
+                        )}
+                        {p.hostel_meta.tenant_types && p.hostel_meta.tenant_types.length > 0 && (
+                          <div>🎓 For: {p.hostel_meta.tenant_types.map((t) => TENANT_TYPE_LABELS[t] ?? t).join(", ")}</div>
+                        )}
+                        {p.hostel_meta.gate_timing_enabled && p.hostel_meta.gate_closing_time && (
+                          <div>🚪 Gate closes: {gateTimeLabel(p.hostel_meta.gate_closing_time)}</div>
+                        )}
+                        {p.hostel_meta.notice_period && (
+                          <div>📝 Notice period: {noticePeriodLabel(p.hostel_meta.notice_period)}</div>
+                        )}
+                        {p.hostel_meta.services && p.hostel_meta.services.length > 0 && (
+                          <div>🧺 Services: {p.hostel_meta.services.map((s) => SERVICE_LABELS[s]?.label ?? s).join(", ")}</div>
+                        )}
+                        {p.hostel_meta.house_rules && p.hostel_meta.house_rules.length > 0 && (
+                          <div>🚫 Rules: {p.hostel_meta.house_rules.map((r) => HOUSE_RULE_LABELS[r] ?? r).join(", ")}</div>
+                        )}
+                        {p.hostel_meta.common_amenities && p.hostel_meta.common_amenities.length > 0 && (
+                          <div>✨ Amenities: {p.hostel_meta.common_amenities.map((a) => COMMON_AMENITY_LABELS[a]?.label ?? a).join(", ")}</div>
+                        )}
+                        {p.hostel_meta.parking_enabled && p.hostel_meta.parking_types && p.hostel_meta.parking_types.length > 0 && (
+                          <div>🅿️ Parking: {p.hostel_meta.parking_types.map((t) => PARKING_TYPE_LABELS[t] ?? t).join(", ")}</div>
+                        )}
+                        {p.hostel_meta.usp_text && (
+                          <div>⭐ USP{p.hostel_meta.usp_category ? ` (${p.hostel_meta.usp_category})` : ""}: {p.hostel_meta.usp_text}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Partner / owner info */}
                   {p.dealers && (
                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-                      {p.dealers.role === "owner" ? "Owner" : "Dealer"}:{" "}
+                      {p.dealers.role === "owner" ? "Owner" : "Partner"}:{" "}
                       <strong style={{ color: "var(--ink)" }}>{p.dealers.name}</strong>
                       {p.dealers.phone && (
                         <a href={`tel:${p.dealers.phone}`} style={{ color: "var(--color-primary)", fontWeight: 600, marginLeft: 6 }}>
