@@ -3,8 +3,8 @@
 import {
   HostelForm, RoomConfig,
   ROOM_FACILITIES, HOUSE_RULES, TENANT_TYPES, CORE_SERVICES,
-  NOTICE_PERIODS, GATE_TIMES,
-  roomCategoryLabel, roomCategoryCapacity,
+  NOTICE_PERIODS, GATE_TIMES, ROOM_CATEGORIES, COOLING_TYPES,
+  roomCategoryLabel, roomCategoryCapacity, emptyRoomConfig,
 } from "../types";
 import styles from "../styles.module.css";
 
@@ -24,19 +24,19 @@ export default function Step2Rooms({
     clearError(k as string);
   }
 
-  function setRoom<K extends keyof RoomConfig>(idx: number, k: K, v: RoomConfig[K]) {
+  function setRoom<K extends keyof RoomConfig>(id: string, k: K, v: RoomConfig[K]) {
     setForm((f) => ({
       ...f,
-      rooms: f.rooms.map((r, i) => (i === idx ? { ...r, [k]: v } : r)),
+      rooms: f.rooms.map((r) => (r.id === id ? { ...r, [k]: v } : r)),
     }));
     clearError("rooms");
   }
 
-  function toggleFacility(idx: number, key: string) {
+  function toggleFacility(id: string, key: string) {
     setForm((f) => ({
       ...f,
-      rooms: f.rooms.map((r, i) =>
-        i === idx
+      rooms: f.rooms.map((r) =>
+        r.id === id
           ? {
               ...r,
               facilities: r.facilities.includes(key)
@@ -46,6 +46,14 @@ export default function Step2Rooms({
           : r
       ),
     }));
+  }
+
+  function addVariant(key: RoomConfig["key"]) {
+    setForm((f) => ({ ...f, rooms: [...f.rooms, emptyRoomConfig(key)] }));
+  }
+
+  function removeVariant(id: string) {
+    setForm((f) => ({ ...f, rooms: f.rooms.filter((r) => r.id !== id) }));
   }
 
   /* Generic multi-select toggle for the rules block */
@@ -72,92 +80,136 @@ export default function Step2Rooms({
 
   return (
     <>
-      {/* ── One card per room category chosen in Step 1 ── */}
-      {form.rooms.map((room, i) => {
-        const cap = roomCategoryCapacity(room);
-        const label = roomCategoryLabel(room);
+      {/* ── One group per room category chosen in Step 1 — each group can
+          hold multiple variant cards (e.g. Single+AC, Single+Cooler) ── */}
+      {form.roomCategories.map((catKey) => {
+        const catRooms = form.rooms.filter((r) => r.key === catKey);
+        const catLabel = ROOM_CATEGORIES.find((c) => c.key === catKey)?.label ?? catKey;
         return (
-          <div key={room.key} className={styles.roomCard}>
-            <div className={styles.roomCardHead}>
-              <span className={styles.roomCardTitle}>{label} Room</span>
-              {room.key !== "other" && (
-                <span className={styles.roomCardBadge}>
-                  {cap} {cap === 1 ? "bed" : "beds"} / room
-                </span>
-              )}
-            </div>
+          <div key={catKey} style={{ marginBottom: 8 }}>
+            {catRooms.map((room) => {
+              const cap = roomCategoryCapacity(room);
+              const label = roomCategoryLabel(room);
+              return (
+                <div key={room.id} className={styles.roomCard}>
+                  <div className={styles.roomCardHead}>
+                    <span className={styles.roomCardTitle}>{label} Room</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {room.key !== "other" && (
+                        <span className={styles.roomCardBadge}>
+                          {cap} {cap === 1 ? "bed" : "beds"} / room
+                        </span>
+                      )}
+                      {catRooms.length > 1 && (
+                        <button
+                          onClick={() => removeVariant(room.id)}
+                          aria-label="Remove this option"
+                          style={{ color: "var(--red)", fontSize: 18, lineHeight: 1, padding: "0 4px" }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-            {room.key === "other" && (
-              <>
-                <label className={styles.label}>What do you call this room type?</label>
-                <input
-                  type="text"
-                  className={styles.input}
-                  placeholder="e.g. Deluxe AC, Dormitory"
-                  value={room.customLabel}
-                  onChange={(e) => setRoom(i, "customLabel", e.target.value)}
-                  style={{ marginBottom: 12 }}
-                />
-              </>
-            )}
+                  {room.key === "other" && (
+                    <>
+                      <label className={styles.label}>What do you call this room type?</label>
+                      <input
+                        type="text"
+                        className={styles.input}
+                        placeholder="e.g. Deluxe AC, Dormitory"
+                        value={room.customLabel}
+                        onChange={(e) => setRoom(room.id, "customLabel", e.target.value)}
+                        style={{ marginBottom: 12 }}
+                      />
+                    </>
+                  )}
 
-            <div className={styles.inputRow} style={{ marginBottom: 12 }}>
-              <div>
-                <label className={styles.label}>Number of rooms</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  className={styles.input}
-                  placeholder="e.g. 6"
-                  value={room.numRooms}
-                  onChange={(e) => setRoom(i, "numRooms", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={styles.label}>Rent per bed (₹/mo)</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  className={`${styles.input} ${errors.rooms ? styles.inputError : ""}`}
-                  placeholder="e.g. 7000"
-                  value={room.rentPerBed}
-                  onChange={(e) => setRoom(i, "rentPerBed", e.target.value)}
-                />
-              </div>
-            </div>
+                  <div className={styles.inputRow} style={{ marginBottom: 12 }}>
+                    <div>
+                      <label className={styles.label}>Number of rooms</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        className={styles.input}
+                        placeholder="e.g. 6"
+                        value={room.numRooms}
+                        onChange={(e) => setRoom(room.id, "numRooms", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className={styles.label}>Rent per bed (₹/mo)</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        className={`${styles.input} ${errors.rooms ? styles.inputError : ""}`}
+                        placeholder="e.g. 7000"
+                        value={room.rentPerBed}
+                        onChange={(e) => setRoom(room.id, "rentPerBed", e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-            <label className={styles.label}>Security deposit (₹)</label>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              className={styles.input}
-              placeholder="e.g. 5000"
-              value={room.deposit}
-              onChange={(e) => setRoom(i, "deposit", e.target.value)}
-              style={{ marginBottom: 14 }}
-            />
+                  <label className={styles.label}>Security deposit (₹)</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    className={styles.input}
+                    placeholder="e.g. 5000"
+                    value={room.deposit}
+                    onChange={(e) => setRoom(room.id, "deposit", e.target.value)}
+                    style={{ marginBottom: 14 }}
+                  />
 
-            <label className={styles.label} style={{ marginBottom: 8 }}>
-              What&apos;s inside this room?
-            </label>
-            <div className={styles.featureChips}>
-              {ROOM_FACILITIES.map((f) => {
-                const on = room.facilities.includes(f.key);
-                return (
-                  <button
-                    key={f.key}
-                    className={`${styles.chip} ${on ? styles.chipActive : ""}`}
-                    onClick={() => toggleFacility(i, f.key)}
-                    aria-pressed={on}
-                  >
-                    {on ? "✓ " : `${f.icon} `}{f.label}
-                  </button>
-                );
-              })}
-            </div>
+                  <label className={styles.label} style={{ marginBottom: 8 }}>Cooling</label>
+                  <div className={styles.optBtns} style={{ marginBottom: 14 }}>
+                    {COOLING_TYPES.map((c) => (
+                      <button
+                        key={c.key}
+                        className={`${styles.optBtn} ${room.coolingType === c.key ? styles.optBtnActive : ""}`}
+                        onClick={() => setRoom(room.id, "coolingType", c.key)}
+                      >
+                        {c.icon} {c.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label className={styles.label} style={{ marginBottom: 8 }}>
+                    What&apos;s inside this room?
+                  </label>
+                  <div className={styles.featureChips}>
+                    {ROOM_FACILITIES.map((f) => {
+                      const on = room.facilities.includes(f.key);
+                      return (
+                        <button
+                          key={f.key}
+                          className={`${styles.chip} ${on ? styles.chipActive : ""}`}
+                          onClick={() => toggleFacility(room.id, f.key)}
+                          aria-pressed={on}
+                        >
+                          {on ? "✓ " : `${f.icon} `}{f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              onClick={() => addVariant(catKey)}
+              style={{
+                width: "100%", border: "1.5px dashed var(--line)", borderRadius: 10, padding: "12px",
+                fontSize: 13.5, fontWeight: 700, color: "var(--color-primary)", background: "rgba(15,118,110,0.04)",
+                marginBottom: 14,
+              }}
+            >
+              + Add another {catLabel} option (e.g. different cooling or rent)
+            </button>
           </div>
         );
       })}

@@ -176,21 +176,22 @@ export default function HostelFlow({
 
       const genderMap: Record<string, string> = { male: "boys", female: "girls", both: "any" };
 
+      const coolingSuffix: Record<string, string> = { ac: " — AC", cooler: " — Cooler", none: "" };
       const units = validRooms.map((r, i) => ({
-        label: `${roomCategoryLabel(r)} Room`,
+        label: `${roomCategoryLabel(r)} Room${coolingSuffix[r.coolingType] ?? ""}`,
         capacity: roomCategoryCapacity(r),
         price_per_month: Number(r.rentPerBed),
         deposit_amount: r.deposit ? Number(r.deposit) : null,
         total_count: Number(r.numRooms),
         available_count: Number(r.numRooms),
-        has_ac: r.facilities.includes("ac"),
-        has_cooler: r.facilities.includes("air_cooler"),
+        has_ac: r.coolingType === "ac",
+        has_cooler: r.coolingType === "cooler",
         attached_bath: r.facilities.includes("washroom"),
         meals_included: form.foodProvided,
         sort_order: i,
         attributes: {
           occupancy: r.key,
-          cooling: r.facilities.includes("ac") ? "ac" : r.facilities.includes("air_cooler") ? "cooler" : "none",
+          cooling: r.coolingType,
           facilities: r.facilities,
         },
       }));

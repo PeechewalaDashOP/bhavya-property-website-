@@ -8,8 +8,9 @@ import { fmt } from "@/lib/format";
 import { CATEGORY_AXES, AXIS_OPTIONS, AXIS_LABELS, AxisKey, chipLabel } from "@/lib/variantConfig";
 import {
   HOUSE_RULE_LABELS, SERVICE_LABELS, COMMON_AMENITY_LABELS,
-  TENANT_TYPE_LABELS, gateTimeLabel, noticePeriodLabel,
+  TENANT_TYPE_LABELS, gateTimeLabel, noticePeriodLabel, photoCaption,
 } from "@/lib/hostelLabels";
+import Lightbox, { LightboxItem } from "./Lightbox";
 import styles from "./styles.module.css";
 
 /* ─── Haversine distance (km) ─────────────────────────────── */
@@ -504,13 +505,29 @@ function selectChip(
 ): Record<string, string> {
   const next = { ...current, [axis]: value };
   for (const oa of axes) {
-    if (oa === axis || !next[oa]) continue;
-    const valid = units.some(
-      (u) =>
-        String(u.attributes?.[axis] ?? "") === value &&
-        String(u.attributes?.[oa] ?? "") === next[oa]
-    );
-    if (!valid) delete next[oa];
+    if (oa === axis) continue;
+    const valid =
+      next[oa] !== undefined &&
+      units.some(
+        (u) =>
+          String(u.attributes?.[axis] ?? "") === value &&
+          String(u.attributes?.[oa] ?? "") === next[oa]
+      );
+    if (valid) continue;
+    // The other axis's current value no longer matches — re-seed it with the
+    // best compatible option instead of deleting it. Leaving an axis empty
+    // makes resolveUnit() return null (it requires every axis to be set),
+    // which is why switching e.g. Single -> Double silently stopped updating
+    // the gallery/price once an incompatible axis had been cleared once.
+    const compatible = units.filter((u) => String(u.attributes?.[axis] ?? "") === value);
+    const available = compatible.filter((u) => (u.available_count ?? 0) > 0);
+    const source = available.length > 0 ? available : compatible;
+    const best = source.length > 0
+      ? source.reduce((a, b) => (a.price_per_month ?? 0) <= (b.price_per_month ?? 0) ? a : b)
+      : undefined;
+    const v = best?.attributes?.[oa];
+    if (v !== undefined && v !== null) next[oa] = String(v);
+    else delete next[oa];
   }
   return next;
 }
@@ -583,6 +600,7 @@ export default function PropertyDetail({
     initSel(units, axes, initialParams)
   );
   const [heroIdx, setHeroIdx] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [similarProps, setSimilarProps] = useState<SimilarProp[]>([]);
@@ -594,6 +612,22 @@ export default function PropertyDetail({
   const hasGallery = displayGallery.length > 0;
 
   useEffect(() => { setHeroIdx(0); }, [selectedUnit?.id]);
+
+  // Unified photo + video list for the full-screen lightbox — videos open in
+  // the same viewer instead of a separate tab, and photos are captioned from
+  // whatever tag/section the owner picked during upload.
+  const lightboxItems: LightboxItem[] = [
+    ...displayGallery.map((url) => ({
+      url,
+      type: "photo" as const,
+      caption: photoCaption(url, property.hostel_meta),
+    })),
+    ...videos.map((url, i) => ({
+      url,
+      type: "video" as const,
+      caption: videos.length > 1 ? `Video Tour ${i + 1}` : "Video Tour",
+    })),
+  ];
 
   // Fetch similar properties
   useEffect(() => {
@@ -716,11 +750,15 @@ export default function PropertyDetail({
                 className={styles.galleryHero}
                 src={displayGallery[heroIdx]}
                 alt={property.title}
+                onClick={() => setLightboxIndex(heroIdx)}
+                style={{ cursor: "zoom-in" }}
               />
               {/* Counter */}
               <div className={styles.galleryCounter}>
                 {heroIdx + 1} / {displayGallery.length}
               </div>
+              {/* Tap-to-zoom hint */}
+              <div className={styles.galleryZoomHint} aria-hidden="true">🔍</div>
               {/* Nav arrows */}
               {displayGallery.length > 1 && (
                 <>
@@ -761,17 +799,29 @@ export default function PropertyDetail({
           </div>
         )}
 
-        {/* Video links */}
+        {/* Videos — open in the same full-screen viewer as photos */}
         {videos.length > 0 && (
           <div className={styles.videoLinks}>
             {videos.map((url, i) => (
-              <a key={i} href={url} target="_blank" rel="noreferrer" className={styles.videoLink}>
+              <button
+                key={i}
+                className={styles.videoLink}
+                onClick={() => setLightboxIndex(displayGallery.length + i)}
+              >
                 🎬 Video tour {videos.length > 1 ? i + 1 : ""}
-              </a>
+              </button>
             ))}
           </div>
         )}
       </div>
+
+      {lightboxIndex !== null && (
+        <Lightbox
+          items={lightboxItems}
+          startIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
 
       {/* ── Two-column layout ── */}
       <div className={styles.layout}>
@@ -1073,10 +1123,24 @@ export default function PropertyDetail({
             </div>
           )}
 
-          {/* §8 Distance & coaching */}
+          {/* §8 Location + distance — map is embedded here only, no outbound
+              "open in Google Maps" link, so a student can't jump straight to
+              directions/contact off-platform before going through the lead gate */}
           {showDistWidget && (
             <div className={styles.card}>
-              <div className={styles.sectionTitle}>Distance from Your Location</div>
+              <div className={styles.sectionTitle}>Location</div>
+              <div className={styles.mapEmbedWrap}>
+                <iframe
+                  src={`https://www.google.com/maps/embed/v1/place?key=${mapsKey}&q=${propLat},${propLng}&zoom=15`}
+                  width="100%"
+                  height="220"
+                  style={{ border: 0, display: "block" }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Property location"
+                />
+              </div>
+              <div className={styles.sectionTitle} style={{ marginTop: 4 }}>Distance from Your Location</div>
               <DistanceWidget lat={propLat!} lng={propLng!} mapsKey={mapsKey} />
             </div>
           )}

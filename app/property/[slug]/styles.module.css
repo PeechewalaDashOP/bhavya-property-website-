@@ -143,6 +143,136 @@
   padding: 6px 14px;
   border: 1px solid rgba(15,118,110,0.18);
   text-decoration: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.galleryZoomHint {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 16px;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+/* ── Lightbox (full-screen photo/video viewer) ─────────────────── */
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.96);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  touch-action: none;
+}
+.lightboxTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.lightboxClose {
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+  padding: 4px 10px;
+}
+.lightboxCounter {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 4px 12px;
+}
+.lightboxStage {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+.lightboxImg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: zoom-in;
+  will-change: transform;
+}
+.lightboxVideo {
+  max-width: 100%;
+  max-height: 100%;
+  background: #000;
+}
+.lightboxNav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.lightboxNavLeft { left: 10px; }
+.lightboxNavRight { right: 10px; }
+.lightboxCaption {
+  text-align: center;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 16px 4px;
+  flex-shrink: 0;
+}
+.lightboxZoomControls {
+  position: fixed;
+  right: 14px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 3;
+}
+.lightboxZoomControls button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Embedded map ───────────────────────────────────────────────── */
+.mapEmbedWrap {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 16px;
 }
 
 /* ── Content card ─────────────────────────────────────────────── */

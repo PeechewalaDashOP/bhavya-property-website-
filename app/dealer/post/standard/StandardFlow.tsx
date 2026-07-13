@@ -6,6 +6,7 @@ import { COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS } from "@/lib/constants";
 import {
   StandardForm, RENT_PTYPES, SALE_PTYPES, needsBhk, needsFloor,
 } from "../types";
+import { compressImages } from "@/lib/imageCompress";
 import styles from "../styles.module.css";
 
 type Unit = {
@@ -104,9 +105,9 @@ export default function StandardFlow({
     setUnits((u) => u.map((unit, j) => j === i ? { ...unit, [k]: v } : unit));
   }
 
-  function addPhotos(fl: FileList | null) {
+  async function addPhotos(fl: FileList | null) {
     if (!fl) return;
-    const files = Array.from(fl);
+    const files = await compressImages(Array.from(fl));
     setPhotos((p) => [...p, ...files]);
     setPhotoUrls((u) => [...u, ...files.map((f) => URL.createObjectURL(f))]);
   }

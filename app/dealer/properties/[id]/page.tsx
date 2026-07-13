@@ -7,6 +7,7 @@ import { LoadingBar } from "@/components/LoadingBar";
 import { COACHING_HUBS, FEATURES_LIST } from "@/lib/constants";
 import { HOUSE_RULES, CORE_SERVICES, COMMON_AMENITIES, NOTICE_PERIODS, GATE_TIMES } from "../../post/types";
 import { HostelMeta } from "@/lib/types";
+import { compressImages } from "@/lib/imageCompress";
 
 type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
 
@@ -478,7 +479,16 @@ export default function EditPropertyPage() {
           {editable && (
             <label style={{ display: "inline-block", fontSize: 13, fontWeight: 700, color: "var(--color-primary)", cursor: "pointer" }}>
               + Add Photos
-              <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => setNewPhotos((p) => [...p, ...Array.from(e.target.files ?? [])])} />
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const files = await compressImages(Array.from(e.target.files ?? []));
+                  setNewPhotos((p) => [...p, ...files]);
+                }}
+              />
             </label>
           )}
         </div>

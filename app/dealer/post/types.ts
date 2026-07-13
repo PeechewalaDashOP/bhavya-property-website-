@@ -43,18 +43,27 @@ export const USER_TYPES: { key: UserType; label: string }[] = [
   { key: "agent",   label: "Agent" },
 ];
 
+// AC / Air Cooler are NOT here — they're a dedicated per-variant single-select
+// (COOLING_TYPES below) so "Single + AC" and "Single + Cooler" can exist as
+// two separate bookable options instead of two checkboxes on one shared card.
 export const ROOM_FACILITIES = [
   { key: "geyser",     label: "Geyser",     icon: "🚿" },
   { key: "washroom",   label: "Washroom",   icon: "🚽" },
   { key: "cupboard",   label: "Cupboard",   icon: "🗄️" },
   { key: "tv",         label: "TV",         icon: "📺" },
-  { key: "ac",         label: "AC",         icon: "❄️" },
   { key: "cot",        label: "Cot",        icon: "🛏️" },
   { key: "mattress",   label: "Mattress",   icon: "🛌" },
   { key: "side_table", label: "Side Table", icon: "🪑" },
   { key: "chair",      label: "Chair",      icon: "💺" },
-  { key: "air_cooler", label: "Air Cooler", icon: "🌬️" },
 ] as const;
+
+export type CoolingType = "ac" | "cooler" | "none";
+
+export const COOLING_TYPES: { key: CoolingType; label: string; icon: string }[] = [
+  { key: "ac",     label: "AC",         icon: "❄️" },
+  { key: "cooler", label: "Air Cooler", icon: "🌬️" },
+  { key: "none",   label: "No Cooling", icon: "➖" },
+];
 
 export const HOUSE_RULES = [
   { key: "veg_only",         label: "Veg only" },
@@ -129,23 +138,34 @@ export const MEDIA_SECTIONS = [
 ] as const;
 
 /* ── Per-room-category configuration (Step 2) ──────────────── */
+// `id` is the real identity — multiple RoomConfig entries can share the same
+// `key` (occupancy category), e.g. two "single" entries: one AC, one Cooler,
+// each its own bookable variant with its own rent/deposit/availability.
 export type RoomConfig = {
+  id: string;
   key: RoomCategoryKey;
   customLabel: string;      // used only when key === "other"
   numRooms: string;
   rentPerBed: string;
   deposit: string;
   facilities: string[];     // keys from ROOM_FACILITIES
+  coolingType: CoolingType;
 };
+
+function roomConfigId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
 
 export function emptyRoomConfig(key: RoomCategoryKey): RoomConfig {
   return {
+    id: roomConfigId(),
     key,
     customLabel: "",
     numRooms: "",
     rentPerBed: "",
     deposit: "",
     facilities: [],
+    coolingType: "none",
   };
 }
 

@@ -4,6 +4,7 @@ import { useRef } from "react";
 import {
   HostelForm, MEDIA_SECTIONS, PHOTO_TAGS, roomCategoryLabel,
 } from "../types";
+import { compressImages } from "@/lib/imageCompress";
 import styles from "../styles.module.css";
 
 export type MediaItem = {
@@ -41,9 +42,9 @@ export default function Step4Media({
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const videoRef = useRef<HTMLInputElement>(null);
 
-  function addPhotosToSection(section: string, fl: FileList | null) {
+  async function addPhotosToSection(section: string, fl: FileList | null) {
     if (!fl) return;
-    const files = Array.from(fl);
+    const files = await compressImages(Array.from(fl));
     setMedia((m) => [
       ...m,
       ...files.map((file) => ({
@@ -75,7 +76,7 @@ export default function Step4Media({
 
   const roomSections = form.roomCategories.map((key) => ({
     key,
-    label: `${roomCategoryLabel(form.rooms.find((r) => r.key === key) ?? { key, customLabel: "", numRooms: "", rentPerBed: "", deposit: "", facilities: [] })} Room`,
+    label: `${roomCategoryLabel(form.rooms.find((r) => r.key === key) ?? { id: "", key, customLabel: "", numRooms: "", rentPerBed: "", deposit: "", facilities: [], coolingType: "none" })} Room`,
     icon: "🛏️",
   }));
 

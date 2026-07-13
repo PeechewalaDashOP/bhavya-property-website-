@@ -50,3 +50,42 @@ export function noticePeriodLabel(days: string): string {
   const map: Record<string, string> = { "15": "15 days", "30": "1 month", "60": "2 months" };
   return map[days] ?? `${days} days`;
 }
+
+// Photo captions in the gallery/lightbox — matches PHOTO_TAGS / MEDIA_SECTIONS
+// (+ room category keys) from app/dealer/post/types.ts, duplicated here on
+// purpose to keep the public display layer decoupled from the wizard module.
+export const PHOTO_TAG_LABELS: Record<string, string> = {
+  bed: "Bed",
+  room: "Room",
+  toilet: "Bathroom / Toilet",
+  amenities: "Amenities",
+  tour: "Room Tour",
+};
+
+export const PHOTO_SECTION_LABELS: Record<string, string> = {
+  building: "Building View",
+  common_area: "Common Area",
+  amenities: "Common Amenities",
+  kitchen: "Kitchen",
+  neighborhood: "Neighborhood View",
+  single: "Single Room",
+  double: "Double Room",
+  triple: "Triple Room",
+  four: "Four Sharing Room",
+  other: "Room",
+};
+
+export function photoCaption(
+  url: string,
+  hm: { photo_tags?: Record<string, string>; photo_sections?: Record<string, string> } | null | undefined
+): string | null {
+  if (!hm) return null;
+  const section = hm.photo_sections?.[url];
+  const tag = hm.photo_tags?.[url];
+  const sectionLabel = section ? PHOTO_SECTION_LABELS[section] ?? null : null;
+  const tagLabel = tag ? PHOTO_TAG_LABELS[tag] ?? null : null;
+  if (sectionLabel && tagLabel && tagLabel !== sectionLabel && tagLabel !== "Room") {
+    return `${sectionLabel} — ${tagLabel}`;
+  }
+  return sectionLabel ?? tagLabel ?? null;
+}
