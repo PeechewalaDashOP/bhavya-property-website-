@@ -14,6 +14,10 @@ import PropertyDetail from "@/app/property/[slug]/PropertyDetail";
 
 type Props = { params: Promise<{ slug: string; subtype: string }> };
 
+// Refresh every 60s (same as the homepage) — otherwise these statically
+// generated pages stay frozen with whatever data existed at the last deploy.
+export const revalidate = 60;
+
 export async function generateStaticParams() {
   return Object.keys(AREA_SLUGS).flatMap((slug) =>
     Object.keys(TYPE_SLUGS).map((subtype) => ({ slug, subtype }))

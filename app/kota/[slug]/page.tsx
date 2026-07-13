@@ -13,6 +13,10 @@ import LocalityPage from "./LocalityPage";
 
 type Props = { params: Promise<{ slug: string }> };
 
+// Refresh every 60s (same as the homepage) — otherwise these statically
+// generated pages stay frozen with whatever data existed at the last deploy.
+export const revalidate = 60;
+
 // Pre-generate all area pages + all type pages at build time
 export async function generateStaticParams() {
   return [

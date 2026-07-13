@@ -9,6 +9,10 @@ import { SeoPageShell } from "@/components/SeoGrid";
 
 type Props = { params: Promise<{ hub: string; type: string }> };
 
+// Refresh every 60s (same as the homepage) — otherwise these statically
+// generated pages stay frozen with whatever data existed at the last deploy.
+export const revalidate = 60;
+
 export async function generateStaticParams() {
   return Object.keys(HUB_SLUGS).flatMap((hub) =>
     Object.keys(TYPE_SLUGS).map((type) => ({ hub, type }))
