@@ -112,6 +112,9 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     let l = properties.slice();
     if (tab === "sale") l = l.filter((p) => p.type === "sale");
     else if (tab === "rent") l = l.filter((p) => p.type === "rent");
+    // "PG" tab covers both PG and Hostel listings — the post-property wizard
+    // treats them as one "PG / Hostel" purpose with two sub-kinds.
+    else if (tab === "PG") l = l.filter((p) => p.ptype === "PG" || p.ptype === "Hostel");
     else l = l.filter((p) => p.ptype === tab);
     if (appliedLoc) l = l.filter((p) => p.loc === appliedLoc);
     if (appliedType) l = l.filter((p) => p.ptype === appliedType);
