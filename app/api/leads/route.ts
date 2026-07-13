@@ -40,6 +40,17 @@ export async function POST(req: NextRequest) {
 
   const db = createClient(url, serviceRole, { auth: { persistSession: false } });
 
+  // Never trust a client-supplied dealerId when a property is involved — the
+  // client's copy of a property's dealer can be stale or wrong (this is what
+  // caused leads to save with the wrong/no dealer_id previously). Always
+  // re-derive it server-side from the property itself.
+  let resolvedDealerId = dealerId;
+  if (propId) {
+    const { data: propRow } = await db
+      .from("properties").select("dealer_id").eq("id", propId).maybeSingle();
+    resolvedDealerId = propRow?.dealer_id ?? null;
+  }
+
   let ref = makeRef();
   const { data: clash } = await db
     .from("leads").select("reference_code").eq("reference_code", ref).maybeSingle();
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
     customer_name:  name,
     customer_phone: phone,
     property_id:    propId,
-    dealer_id:      dealerId,
+    dealer_id:      resolvedDealerId,
     unit_id:        unitId,
     unit_label:     unitLabel,
     move_in_date:   moveInDate,
@@ -67,9 +78,9 @@ export async function POST(req: NextRequest) {
 
   // Fetch dealer phone to reveal to customer
   let dealerPhone: string | null = null;
-  if (dealerId) {
+  if (resolvedDealerId) {
     const { data } = await db
-      .from("dealers").select("phone").eq("id", dealerId).maybeSingle() as { data: DealerRow | null };
+      .from("dealers").select("phone").eq("id", resolvedDealerId).maybeSingle() as { data: DealerRow | null };
     dealerPhone = data?.phone ?? null;
   }
 

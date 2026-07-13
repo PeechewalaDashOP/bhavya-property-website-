@@ -12,8 +12,12 @@ function toPublicDealer(d: PublicDealer): PublicDealer {
   return { id: d.id, name: d.name, role: d.role, years: d.years, rating: d.rating };
 }
 
+const UNKNOWN_DEALER: PublicDealer = { id: 0, name: "Property Owner", role: "", years: 0, rating: 0 };
+
 function mapProperty(row: Row, dealersById: Map<number, PublicDealer>): Property {
-  const dealer = dealersById.get(row.dealer_id as number) ?? toPublicDealer(SAMPLE_DEALERS[0]);
+  // Never substitute an unrelated real dealer here — a neutral placeholder
+  // only, in case a property's dealer_id somehow doesn't resolve.
+  const dealer = dealersById.get(row.dealer_id as number) ?? UNKNOWN_DEALER;
   const gallery = (row.gallery as string[]) ?? [];
   return {
     id: row.id as number,
@@ -49,17 +53,26 @@ export async function getData(): Promise<{ properties: Property[]; dealers: Publ
     };
   }
   try {
-    const [{ data: dealers }, { data: areas }, { data: props }, localities] = await Promise.all([
+    // Two separate dealer reads on purpose:
+    // - `allDealers` relies on RLS (is_active OR has an approved property) to
+    //   resolve the *real* posted-by dealer for every property card, including
+    //   self-listed owners (is_active=false) with a live listing.
+    // - `verifiedDealers` is explicitly scoped to is_active=true — the curated
+    //   "Verified Partners" showcase must never include self-listed owners,
+    //   even though RLS now lets their row through for their own property.
+    const [{ data: allDealers }, { data: verifiedDealers }, { data: areas }, { data: props }, localities] = await Promise.all([
       supabase.from("dealers").select("id,name,role,years,rating").order("id"),
+      supabase.from("dealers").select("id,name,role,years,rating").eq("is_active", true).order("id"),
       supabase.from("areas").select("*"),
       supabase.from("properties").select("*").eq("is_approved", true).order("posted_days"),
       getLocalities(),
     ]);
-    const dealerList = (dealers ?? []) as unknown as PublicDealer[];
+    const dealerList = (allDealers ?? []) as unknown as PublicDealer[];
+    const verifiedList = (verifiedDealers ?? []) as unknown as PublicDealer[];
     const byId = new Map<number, PublicDealer>(dealerList.map((d) => [d.id, d]));
     return {
       properties: ((props ?? []) as Row[]).map((r) => mapProperty(r, byId)),
-      dealers: dealerList.length ? dealerList.map(toPublicDealer) : SAMPLE_DEALERS.map(toPublicDealer),
+      dealers: verifiedList.length ? verifiedList.map(toPublicDealer) : SAMPLE_DEALERS.map(toPublicDealer),
       areas: ((areas ?? []) as unknown as Area[]).length ? ((areas ?? []) as unknown as Area[]) : SAMPLE_AREAS,
       localities,
     };
