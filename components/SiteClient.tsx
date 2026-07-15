@@ -626,13 +626,13 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           </div>
           <div>
             <h5>Contact us</h5>
-            <a href="tel:+919829012345">📞 +91 98290 12345</a>
+            <a href="tel:+919468528286">📞+91 94685 28286</a>
             <a href="mailto:hello@prop100.in">✉️ hello@prop100.in</a>
-            <p>📍 Office: Vigyan Nagar, Kota,<br />Rajasthan 324005</p>
+            <p>📍 Office: keshavpura, Kota,<br />Rajasthan 324005</p>
             <p>🕒 Open: 9 AM – 8 PM (Mon–Sat)</p>
           </div>
         </div>
-        <div className="fbot">© 2026 Prop100 · Built with Next.js, Supabase &amp; Vercel.</div>
+        <div className="fbot">© 2026 Prop100 · Built by Bhavya &amp; Team.</div>
       </div></footer>
 
       {/* PROPERTY MODAL */}
