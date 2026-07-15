@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Area, Locality, PublicDealer, Property } from "@/lib/types";
-import { fmt } from "@/lib/format";
+import { fmt, capFirst } from "@/lib/format";
 
 type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities?: Locality[] };
 type Tab = "sale" | "rent" | "PG" | "Plot" | "Shop";
@@ -562,7 +562,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
               </div>
               <div className="b">
                 <div className="price">{fmt(p.price)}{p.type === "rent" && <small> /month</small>}</div>
-                <div className="tt" onClick={goDetail}>{p.title}</div>
+                <div className="tt" onClick={goDetail}>{capFirst(p.title)}</div>
                 <div className="lc">📍 {p.loc}, Kota{p.coaching ? " · 🎓 " + p.coaching : ""}</div>
                 <div className="sp">
                   {p.bhk ? <span><b>{p.bhk}</b> BHK</span> : null}
@@ -690,7 +690,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             <div className="ph"><img src={modalProp.gallery[0]} alt={modalProp.title} /><button className="x" onClick={() => setModalProp(null)}>×</button></div>
             <div className="mb">
               <div className="price">{fmt(modalProp.price)}{modalProp.type === "rent" && <small style={{ fontSize: 13, color: "var(--muted)" }}> /month</small>}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{modalProp.title}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{capFirst(modalProp.title)}</div>
               <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 3 }}>📍 {modalProp.loc}, Kota{modalProp.coaching ? " · 🎓 near " + modalProp.coaching : ""}</div>
               <div className="specs">
                 {modalProp.bhk ? <div className="s"><b>{modalProp.bhk}</b><span>Beds</span></div> : null}

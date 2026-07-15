@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PropertyFull, PropertyUnit } from "@/lib/types";
 import { AREA_COORDS, PTYPE_ICONS } from "@/lib/constants";
-import { fmt } from "@/lib/format";
+import { fmt, capFirst } from "@/lib/format";
 import { CATEGORY_AXES, AXIS_OPTIONS, AXIS_LABELS, AxisKey, chipLabel } from "@/lib/variantConfig";
 import {
   HOUSE_RULE_LABELS, SERVICE_LABELS, COMMON_AMENITY_LABELS,
@@ -612,6 +612,17 @@ export default function PropertyDetail({
 
   useEffect(() => { setHeroIdx(0); }, [selectedUnit?.id]);
 
+  // Switching the occupancy chip (Single/Double/...) jumps the SAME shared
+  // gallery to a photo tagged for that room type, if the dealer tagged one —
+  // one viewer that switches photo, not a separate gallery per variant.
+  useEffect(() => {
+    const occ = sel.occupancy;
+    const sections = property.hostel_meta?.photo_sections;
+    if (!occ || !sections) return;
+    const idx = displayGallery.findIndex((url) => sections[url] === occ);
+    if (idx >= 0) setHeroIdx(idx);
+  }, [sel.occupancy]);
+
   // Unified photo + video list — also drives the main hero/thumbnail strip
   // (so videos preview inline like Amazon/Flipkart, no tap-in required to
   // even see them) and the full-screen lightbox for a deeper zoomed view.
@@ -863,7 +874,7 @@ export default function PropertyDetail({
                 Deposit: ₹{displayDeposit.toLocaleString("en-IN")}
               </div>
             )}
-            <div className={styles.propTitle}>{property.title.split(" | ")[0]}</div>
+            <div className={styles.propTitle}>{capFirst(property.title.split(" | ")[0])}</div>
             <div className={styles.propLoc}>
               📍 {property.loc}, Kota
               {property.nearest_coaching_hub && ` · 🎓 Near ${property.nearest_coaching_hub}`}

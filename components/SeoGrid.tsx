@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SeoProperty } from "@/lib/seoHelpers";
 import { PTYPE_ICONS } from "@/lib/constants";
-import { fmt } from "@/lib/format";
+import { fmt, capFirst } from "@/lib/format";
 import styles from "./SeoGrid.module.css";
 
 // Server component — fully static, crawlable, no JS needed
@@ -157,7 +157,7 @@ function PropertyCard({ p }: { p: SeoProperty }) {
           {fmt(price)}
           {p.type === "rent" && <span className={styles.pricePer}>/mo</span>}
         </div>
-        <div className={styles.title}>{p.title}</div>
+        <div className={styles.title}>{capFirst(p.title)}</div>
         <div className={styles.loc}>
           📍 {p.loc}, Kota
           {p.nearest_coaching_hub ? ` · 🎓 Near ${p.nearest_coaching_hub}` : ""}
