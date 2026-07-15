@@ -609,13 +609,12 @@ export default function PropertyDetail({
 
   const displayGallery =
     selectedUnit?.unit_photos?.length ? selectedUnit.unit_photos : gallery;
-  const hasGallery = displayGallery.length > 0;
 
   useEffect(() => { setHeroIdx(0); }, [selectedUnit?.id]);
 
-  // Unified photo + video list for the full-screen lightbox — videos open in
-  // the same viewer instead of a separate tab, and photos are captioned from
-  // whatever tag/section the owner picked during upload.
+  // Unified photo + video list — also drives the main hero/thumbnail strip
+  // (so videos preview inline like Amazon/Flipkart, no tap-in required to
+  // even see them) and the full-screen lightbox for a deeper zoomed view.
   const lightboxItems: LightboxItem[] = [
     ...displayGallery.map((url) => ({
       url,
@@ -743,51 +742,80 @@ export default function PropertyDetail({
 
       {/* ── Gallery — full width, above the two-column layout ── */}
       <div className={styles.galleryWrap}>
-        {hasGallery ? (
+        {lightboxItems.length > 0 ? (
           <>
             <div className={styles.galleryHeroWrap}>
-              <img
-                className={styles.galleryHero}
-                src={displayGallery[heroIdx]}
-                alt={property.title}
-                onClick={() => setLightboxIndex(heroIdx)}
-                style={{ cursor: "zoom-in" }}
-              />
+              {lightboxItems[heroIdx].type === "photo" ? (
+                <img
+                  className={styles.galleryHero}
+                  src={lightboxItems[heroIdx].url}
+                  alt={property.title}
+                  onClick={() => setLightboxIndex(heroIdx)}
+                  style={{ cursor: "zoom-in" }}
+                />
+              ) : (
+                // Video plays inline right here — no tap-in needed to see or
+                // start it, matching how photos are already visible outside
+                // the lightbox. Tapping the expand hint still opens the
+                // full-screen viewer for anyone who wants that.
+                <video
+                  key={lightboxItems[heroIdx].url}
+                  className={styles.galleryHero}
+                  src={lightboxItems[heroIdx].url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                />
+              )}
               {/* Counter */}
               <div className={styles.galleryCounter}>
-                {heroIdx + 1} / {displayGallery.length}
+                {heroIdx + 1} / {lightboxItems.length}
               </div>
-              {/* Tap-to-zoom hint */}
-              <div className={styles.galleryZoomHint} aria-hidden="true">🔍</div>
+              {/* Tap-to-zoom / expand hint */}
+              <div
+                className={styles.galleryZoomHint}
+                aria-hidden="true"
+                onClick={() => setLightboxIndex(heroIdx)}
+                style={{ pointerEvents: "auto", cursor: "pointer" }}
+              >
+                {lightboxItems[heroIdx].type === "photo" ? "🔍" : "⛶"}
+              </div>
               {/* Nav arrows */}
-              {displayGallery.length > 1 && (
+              {lightboxItems.length > 1 && (
                 <>
                   <button
                     className={`${styles.galleryArrow} ${styles.galleryArrowLeft}`}
-                    onClick={() => setHeroIdx((i) => (i - 1 + displayGallery.length) % displayGallery.length)}
-                    aria-label="Previous photo"
+                    onClick={() => setHeroIdx((i) => (i - 1 + lightboxItems.length) % lightboxItems.length)}
+                    aria-label="Previous"
                   >
                     ‹
                   </button>
                   <button
                     className={`${styles.galleryArrow} ${styles.galleryArrowRight}`}
-                    onClick={() => setHeroIdx((i) => (i + 1) % displayGallery.length)}
-                    aria-label="Next photo"
+                    onClick={() => setHeroIdx((i) => (i + 1) % lightboxItems.length)}
+                    aria-label="Next"
                   >
                     ›
                   </button>
                 </>
               )}
             </div>
-            {displayGallery.length > 1 && (
+            {lightboxItems.length > 1 && (
               <div className={styles.thumbStrip}>
-                {displayGallery.map((src, i) => (
+                {lightboxItems.map((it, i) => (
                   <div
                     key={i}
                     className={`${styles.thumb} ${i === heroIdx ? styles.thumbActive : ""}`}
                     onClick={() => setHeroIdx(i)}
                   >
-                    <img src={src} alt="" />
+                    {it.type === "photo" ? (
+                      <img src={it.url} alt="" />
+                    ) : (
+                      <div className={styles.thumbVideoWrap}>
+                        <video src={it.url} muted preload="metadata" />
+                        <span className={styles.thumbVideoIcon}>▶</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -796,21 +824,6 @@ export default function PropertyDetail({
         ) : (
           <div className={styles.galleryPlaceholder}>
             {PTYPE_ICONS[property.ptype] ?? "🏠"}
-          </div>
-        )}
-
-        {/* Videos — open in the same full-screen viewer as photos */}
-        {videos.length > 0 && (
-          <div className={styles.videoLinks}>
-            {videos.map((url, i) => (
-              <button
-                key={i}
-                className={styles.videoLink}
-                onClick={() => setLightboxIndex(displayGallery.length + i)}
-              >
-                🎬 Video tour {videos.length > 1 ? i + 1 : ""}
-              </button>
-            ))}
           </div>
         )}
       </div>
