@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Area, Locality, PublicDealer, Property } from "@/lib/types";
 import { fmt } from "@/lib/format";
@@ -14,6 +14,54 @@ type ChatMsg =
   | { who: "bot"; cards: Property[] };
 
 const COACH_AREA_IMG = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80";
+
+// Auto-rotating photo strip for a listing card — images only, never the
+// property's videos. Manual arrow/dot taps stop propagation so they don't
+// also trigger the card's own onClick (navigate to the detail page).
+const CARD_PHOTO_INTERVAL = 3500;
+
+function CardPhotos({ gallery, title }: { gallery: string[]; title: string }) {
+  const [idx, setIdx] = useState(0);
+  const [tick, setTick] = useState(0);
+  const n = gallery.length;
+
+  useEffect(() => {
+    if (n <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % n), CARD_PHOTO_INTERVAL);
+    return () => clearInterval(t);
+  }, [n, tick]);
+
+  function nudge(delta: number, e: MouseEvent) {
+    e.stopPropagation();
+    setIdx((i) => (i + delta + n) % n);
+    setTick((t) => t + 1);
+  }
+
+  return (
+    <>
+      <img src={gallery[idx]} loading="lazy" alt={title} />
+      {n > 1 && (
+        <>
+          <button className="phNav phPrev" onClick={(e) => nudge(-1, e)} aria-label="Previous photo">‹</button>
+          <button className="phNav phNext" onClick={(e) => nudge(1, e)} aria-label="Next photo">›</button>
+          <div className="phDots">
+            {gallery.map((_, i) => (
+              <span
+                key={i}
+                className={"phDot" + (i === idx ? " on" : "")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIdx(i);
+                  setTick((t) => t + 1);
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 export default function SiteClient({ properties, dealers, areas, localities = [] }: Props) {
   const router = useRouter();
@@ -507,7 +555,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             return (
             <div className="card" key={p.id}>
               <div className="ph" onClick={goDetail} style={p.slug ? { cursor: "pointer" } : undefined}>
-                <img src={p.img} loading="lazy" alt={p.title} />
+                <CardPhotos gallery={p.gallery?.length ? p.gallery : [p.img]} title={p.title} />
                 <span className="tag">{p.type === "sale" ? "For Sale" : "For Rent"}</span>
                 {p.verified && <span className="ver">✓ Verified</span>}
                 <span className="photos">📷 {p.photos}</span>
