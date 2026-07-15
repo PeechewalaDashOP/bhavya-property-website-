@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import { PropertyFull } from "@/lib/types";
 import PropertyDetail from "./PropertyDetail";
 
+export const revalidate = 60;
+
 type Props = {
   params: Promise<{ slug: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
