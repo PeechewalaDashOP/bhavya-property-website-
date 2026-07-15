@@ -55,7 +55,12 @@ export async function POST(req: NextRequest) {
   const db = createClient(supaUrl, serviceKey, { auth: { persistSession: false } });
 
   const bhkNum = Number(bhk) || 0;
-  const title = `${bhkNum > 0 ? bhkNum + " BHK " : ""}${ptype} in ${loc}`;
+  const hostelMetaObj = hostel_meta && typeof hostel_meta === "object"
+    ? (hostel_meta as Record<string, unknown>)
+    : null;
+  const pgName = hostelMetaObj?.pg_name ? String(hostelMetaObj.pg_name).trim() : "";
+  const baseTitle = `${bhkNum > 0 ? bhkNum + " BHK " : ""}${ptype} in ${loc}`;
+  const title = pgName ? `${pgName} | ${baseTitle}` : baseTitle;
   const slug = makeSlug(String(ptype), bhkNum, String(loc));
 
   const photoArr = Array.isArray(photoPaths) ? (photoPaths as string[]) : [];

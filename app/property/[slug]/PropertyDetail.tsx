@@ -863,7 +863,7 @@ export default function PropertyDetail({
                 Deposit: ₹{displayDeposit.toLocaleString("en-IN")}
               </div>
             )}
-            <div className={styles.propTitle}>{property.title}</div>
+            <div className={styles.propTitle}>{property.title.split(" | ")[0]}</div>
             <div className={styles.propLoc}>
               📍 {property.loc}, Kota
               {property.nearest_coaching_hub && ` · 🎓 Near ${property.nearest_coaching_hub}`}
