@@ -432,6 +432,12 @@ function orderedAxisValues(axis: AxisKey, units: PropertyUnit[]): string[] {
   return Array.from(present).sort((a, b) => Number(a) - Number(b));
 }
 
+// Seeds the variant selector. A search/filter link can pin a specific
+// variant per axis (e.g. ?occupancy=double) — that's honored axis-by-axis
+// rather than all-or-nothing, so "double" still applies even if cooling
+// wasn't part of the search. Any axis left unpinned defaults to whichever
+// value is first in its canonical order (Single before Double before
+// Triple, etc.) — not the cheapest — preferring one still in stock.
 function initSel(
   units: PropertyUnit[],
   axes: AxisKey[],
@@ -439,27 +445,30 @@ function initSel(
 ): Record<string, string> {
   if (axes.length === 0 || units.length === 0) return {};
 
-  const fromUrl: Record<string, string> = {};
+  const result: Record<string, string> = {};
+  let candidates = units;
+
   for (const ax of axes) {
-    if (params[ax]) fromUrl[ax] = params[ax];
-  }
-  if (Object.keys(fromUrl).length === axes.length) {
-    const match = units.find((u) =>
-      axes.every((ax) => String(u.attributes?.[ax] ?? "") === fromUrl[ax])
-    );
-    if (match) return fromUrl;
+    const fromUrl = params[ax];
+    const urlValid = fromUrl !== undefined
+      && candidates.some((u) => String(u.attributes?.[ax] ?? "") === fromUrl);
+
+    let chosen: string | undefined;
+    if (urlValid) {
+      chosen = fromUrl;
+    } else {
+      const ordered = orderedAxisValues(ax, candidates);
+      const withStock = ordered.find((v) =>
+        candidates.some((u) => String(u.attributes?.[ax] ?? "") === v && (u.available_count ?? 0) > 0)
+      );
+      chosen = withStock ?? ordered[0];
+    }
+
+    if (chosen === undefined) continue;
+    result[ax] = chosen;
+    candidates = candidates.filter((u) => String(u.attributes?.[ax] ?? "") === chosen);
   }
 
-  const candidates = units.filter((u) => (u.available_count ?? 0) > 0);
-  const source = candidates.length > 0 ? candidates : units;
-  const best = source.reduce((a, b) =>
-    (a.price_per_month ?? 0) <= (b.price_per_month ?? 0) ? a : b
-  );
-  const result: Record<string, string> = {};
-  for (const ax of axes) {
-    const v = best.attributes?.[ax];
-    if (v !== undefined && v !== null) result[ax] = String(v);
-  }
   return result;
 }
 
@@ -599,7 +608,17 @@ export default function PropertyDetail({
   const [sel, setSel] = useState<Record<string, string>>(() =>
     initSel(units, axes, initialParams)
   );
-  const [heroIdx, setHeroIdx] = useState(0);
+  const [heroIdx, setHeroIdx] = useState(() => {
+    // Default is always the first photo. The only exception: the visitor
+    // arrived via a search/filter link that pins a specific occupancy
+    // (e.g. ?occupancy=double) AND the dealer tagged a photo for that room
+    // type — then open straight on that photo instead.
+    const occ = initialParams.occupancy;
+    const sections = property.hostel_meta?.photo_sections;
+    if (!occ || !sections) return 0;
+    const idx = gallery.findIndex((url) => sections[url] === occ);
+    return idx >= 0 ? idx : 0;
+  });
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -610,18 +629,25 @@ export default function PropertyDetail({
   const displayGallery =
     selectedUnit?.unit_photos?.length ? selectedUnit.unit_photos : gallery;
 
-  useEffect(() => { setHeroIdx(0); }, [selectedUnit?.id]);
-
-  // Switching the occupancy chip (Single/Double/...) jumps the SAME shared
+  // Switching variant chips (occupancy or cooling) jumps the SAME shared
   // gallery to a photo tagged for that room type, if the dealer tagged one —
   // one viewer that switches photo, not a separate gallery per variant.
+  // Skips its first run: the initial photo is already decided by heroIdx's
+  // own useState initializer above (first photo, unless the URL explicitly
+  // asked for a variant), so this only reacts to the visitor changing chips.
+  // Compares actual values (not a "have I run once" flag) so React Strict
+  // Mode's dev-only double-invoke of effects on mount can't defeat the
+  // skip — both synthetic runs see the same key as prevSelKey and no-op.
+  const prevSelKey = useRef(`${selectedUnit?.id ?? ""}|${sel.occupancy ?? ""}`);
   useEffect(() => {
+    const key = `${selectedUnit?.id ?? ""}|${sel.occupancy ?? ""}`;
+    if (key === prevSelKey.current) return;
+    prevSelKey.current = key;
     const occ = sel.occupancy;
     const sections = property.hostel_meta?.photo_sections;
-    if (!occ || !sections) return;
-    const idx = displayGallery.findIndex((url) => sections[url] === occ);
-    if (idx >= 0) setHeroIdx(idx);
-  }, [sel.occupancy]);
+    const idx = occ && sections ? displayGallery.findIndex((url) => sections[url] === occ) : -1;
+    setHeroIdx(idx >= 0 ? idx : 0);
+  }, [selectedUnit?.id, sel.occupancy]);
 
   // Unified photo + video list — also drives the main hero/thumbnail strip
   // (so videos preview inline like Amazon/Flipkart, no tap-in required to
