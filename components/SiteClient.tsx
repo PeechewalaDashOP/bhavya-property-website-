@@ -608,8 +608,8 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           </>
         ) : (
           <div className="dcta">
-            <h2 className="sec">Become a founding partner</h2>
-            <p className="sub">We&apos;re onboarding Kota&apos;s first verified property partners. List with us and get leads straight on WhatsApp.</p>
+            <h2 className="sec">List Your Property. Get Genuine Leads.</h2>
+            <p className="sub">Add your property on Prop100 and receive verified buyer &amp; tenant enquiries directly on WhatsApp.</p>
             <a className="btn" href="/dealer/post">+ List Your Property With Us</a>
           </div>
         )}

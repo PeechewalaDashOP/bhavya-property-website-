@@ -162,8 +162,10 @@ section{padding:40px 0}
 .dcard .st{display:flex;justify-content:center;gap:18px;font-size:12px;color:var(--color-muted);margin-bottom:12px}.dcard .st b{display:block;font-size:16px;color:var(--color-heading)}
 .dcard .cl{background:var(--color-background);border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:9px 14px;font-weight:700;font-size:13px;display:inline-block;transition:border-color var(--duration-fast) var(--ease),color var(--duration-fast) var(--ease)}
 .dcard .cl:hover{border-color:var(--color-primary);color:var(--color-primary)}
-.dcta{max-width:440px;margin:0 auto;text-align:center}
-.dcta .btn{width:auto;display:inline-block;padding:14px 28px;margin-top:14px}
+.dcta{max-width:640px;margin:0 auto;text-align:center;background:linear-gradient(135deg,var(--color-primary),var(--color-primary-hover));border-radius:var(--radius-lg);padding:40px 24px;box-shadow:var(--shadow-3)}
+.dcta h2.sec,.dcta .sub{color:#fff}.dcta .sub{opacity:.9}
+.dcta .btn{width:auto;display:inline-block;padding:14px 30px;margin-top:16px;background:#fff;color:var(--color-primary);box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.dcta .btn:hover{background:#fff;opacity:.92}
 
 /* WHY US */
 .why{background:var(--color-dark);color:#fff}
