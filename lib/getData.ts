@@ -72,7 +72,9 @@ export async function getData(): Promise<{ properties: Property[]; dealers: Publ
     const byId = new Map<number, PublicDealer>(dealerList.map((d) => [d.id, d]));
     return {
       properties: ((props ?? []) as Row[]).map((r) => mapProperty(r, byId)),
-      dealers: verifiedList.length ? verifiedList.map(toPublicDealer) : SAMPLE_DEALERS.map(toPublicDealer),
+      // Never fall back to sample dealers here — an empty array means "no real
+      // verified partners yet," which the UI shows a recruitment CTA for instead.
+      dealers: verifiedList.map(toPublicDealer),
       areas: ((areas ?? []) as unknown as Area[]).length ? ((areas ?? []) as unknown as Area[]) : SAMPLE_AREAS,
       localities,
     };

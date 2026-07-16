@@ -487,7 +487,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         <div className="hstats">
           <span><b>{properties.length}</b> Properties</span>
           <span><b>{localities.length > 0 ? localities.length : areas.length}</b> Areas</span>
-          <span><b>{dealers.length}</b> Verified Partners</span>
+          {dealers.length > 0 && <span><b>{dealers.length}</b> Verified Partners</span>}
           <span><b>₹0</b> Buyer Brokerage</span>
         </div>
       </div></div>
@@ -587,22 +587,32 @@ export default function SiteClient({ properties, dealers, areas, localities = []
 
       {/* DEALERS */}
       <section className="dealers" id="dealers"><div className="wrap">
-        <h2 className="sec">Our verified partners</h2>
-        <p className="sub">Trusted local property partners across Kota</p>
-        <div className="dgrid">
-          {dealers.map((d) => (
-            <div className="dcard" key={d.id}>
-              <div className="av">{d.name[0]}</div>
-              <h4>{d.name}</h4><div className="role">{d.role}</div>
-              <div className="st">
-                <div><b>{dealerCount(d.name)}</b>Homes</div>
-                <div><b>{d.years}</b>Years</div>
-                <div><b>⭐{d.rating}</b>Rating</div>
-              </div>
-              <button className="cl" onClick={() => dealerLead(d.name, d.id)}>📞 Contact partner</button>
+        {dealers.length > 0 ? (
+          <>
+            <h2 className="sec">Our verified partners</h2>
+            <p className="sub">Trusted local property partners across Kota</p>
+            <div className="dgrid">
+              {dealers.map((d) => (
+                <div className="dcard" key={d.id}>
+                  <div className="av">{d.name[0]}</div>
+                  <h4>{d.name}</h4><div className="role">{d.role}</div>
+                  <div className="st">
+                    <div><b>{dealerCount(d.name)}</b>Homes</div>
+                    <div><b>{d.years}</b>Years</div>
+                    <div><b>⭐{d.rating}</b>Rating</div>
+                  </div>
+                  <button className="cl" onClick={() => dealerLead(d.name, d.id)}>📞 Contact partner</button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        ) : (
+          <div className="dcta">
+            <h2 className="sec">Become a founding partner</h2>
+            <p className="sub">We&apos;re onboarding Kota&apos;s first verified property partners. List with us and get leads straight on WhatsApp.</p>
+            <a className="btn" href="/dealer/post">+ List Your Property With Us</a>
+          </div>
+        )}
       </div></section>
 
       {/* WHY US */}
