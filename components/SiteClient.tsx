@@ -7,6 +7,7 @@ import { fmt, capFirst } from "@/lib/format";
 
 type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities?: Locality[] };
 type Tab = "sale" | "rent" | "PG" | "Plot" | "Shop";
+const TABS: Tab[] = ["sale", "rent", "PG", "Plot", "Shop"];
 type GateCtx = { kind?: "dealer"; propId?: number; dealerId?: number; title: string; dealerName?: string; price?: number };
 type ChatMsg =
   | { who: "bot" | "me"; text: string }
@@ -135,6 +136,22 @@ export default function SiteClient({ properties, dealers, areas, localities = []
       setUnlock(new Set(JSON.parse(localStorage.getItem("kp_unlock") || "[]")));
     } catch {}
   }, []);
+  // Restore the active tab from the URL on mount (see tab->URL sync effect
+  // below) so browser back-navigation from a property page returns to the
+  // same tab instead of resetting to the default "Buy" view.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && (TABS as string[]).includes(t)) setTab(t as Tab);
+  }, []);
+  // Keep the URL in sync with the active tab (replaceState only — no extra
+  // history entry, no Next.js data refetch) so it survives browser back/forward.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (tab === "sale") params.delete("tab");
+    else params.set("tab", tab);
+    const qs = params.toString();
+    window.history.replaceState(null, "", qs ? `/?${qs}` : "/");
+  }, [tab]);
   useEffect(() => setShown(6), [tab, appliedLoc, appliedType, appliedBud, fBhk, fFurn, fSort, cVer, cCoach]);
   useEffect(() => setSearchBud(""), [tab]);
   useEffect(() => {
