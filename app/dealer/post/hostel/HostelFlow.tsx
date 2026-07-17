@@ -187,7 +187,7 @@ export default function HostelFlow({
         has_ac: r.coolingType === "ac",
         has_cooler: r.coolingType === "cooler",
         attached_bath: r.facilities.includes("washroom"),
-        meals_included: form.foodProvided,
+        meals_included: Boolean(r.messIncluded),
         sort_order: i,
         attributes: {
           occupancy: r.key,
@@ -195,6 +195,8 @@ export default function HostelFlow({
           facilities: r.facilities,
         },
       }));
+
+      const ownerPhoneDigits = form.ownerPhone.replace(/\D/g, "");
 
       const featureLabels = form.commonAmenities.length > 0 ? form.commonAmenities : [];
 
@@ -224,6 +226,14 @@ export default function HostelFlow({
           nearest_coaching_hub: form.coachingHub || null,
           features: featureLabels,
           description: form.description,
+          lat: form.lat,
+          lng: form.lng,
+          // Leads route to the owner's number: server find-or-creates a dealer
+          // row for this phone and attaches the listing to it (not to the
+          // logged-in collector). Omitted = current behaviour.
+          owner: ownerPhoneDigits.length === 10
+            ? { name: form.ownerName.trim(), phone: ownerPhoneDigits, whatsapp: form.ownerHasWhatsapp }
+            : null,
           photoPaths: coverUrl ? [coverUrl, ...photoPaths.filter((p) => p !== coverUrl)] : photoPaths,
           videoPaths,
           units,
@@ -244,6 +254,7 @@ export default function HostelFlow({
             gate_closing_time: form.gateTimingEnabled ? form.gateClosingTime : null,
             services: form.services,
             food_provided: form.foodProvided,
+            electricity: form.electricity || null,
             common_amenities: form.commonAmenities,
             parking_enabled: form.parkingEnabled,
             parking_types: form.parkingTypes,

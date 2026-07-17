@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { COACHING_HUBS } from "@/lib/constants";
 import {
   HostelForm, PgKind, RoomCategoryKey, UserType,
@@ -23,9 +24,35 @@ export default function Step1Core({
   errors: Record<string, string>;
   clearError: (k: string) => void;
 }) {
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState("");
+
   function set<K extends keyof HostelForm>(k: K, v: HostelForm[K]) {
     setForm((f) => ({ ...f, [k]: v }));
     clearError(k as string);
+  }
+
+  // Same pattern as app/nearby/NearbyClient.tsx — one tap in the doorway.
+  function captureGps() {
+    if (!navigator.geolocation) {
+      setGpsError("GPS not supported on this device.");
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude }));
+        clearError("gps");
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsLoading(false);
+        if (err.code === 1) setGpsError("Location access denied — allow location in browser settings and tap again.");
+        else setGpsError("Could not get location. Move near a window / outside and tap again.");
+      },
+      { timeout: 15000, enableHighAccuracy: true }
+    );
   }
 
   /* Toggling a room category keeps its Step-2 config in sync.
@@ -106,9 +133,83 @@ export default function Step1Core({
         </div>
       </div>
 
+      {/* ── Owner contact — leads route to this number ── */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>Owner Contact</div>
+        <p className={styles.helpText} style={{ marginTop: -6, marginBottom: 12 }}>
+          Students will contact this number. Leave blank to use your login number.
+        </p>
+        <div className={styles.inputRow} style={{ marginBottom: 14 }}>
+          <div>
+            <label className={styles.label}>Owner name</label>
+            <input
+              type="text"
+              className={`${styles.input} ${errors.ownerName ? styles.inputError : ""}`}
+              placeholder="e.g. Ramesh Gupta"
+              value={form.ownerName}
+              onChange={(e) => set("ownerName", e.target.value)}
+              maxLength={60}
+            />
+          </div>
+          <div>
+            <label className={styles.label}>Owner phone</label>
+            <input
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              className={`${styles.input} ${errors.ownerPhone ? styles.inputError : ""}`}
+              placeholder="10-digit mobile"
+              value={form.ownerPhone}
+              onChange={(e) => set("ownerPhone", e.target.value.replace(/\D/g, ""))}
+            />
+          </div>
+        </div>
+        {errors.ownerName && <div className={styles.errorMsg} style={{ marginTop: -8, marginBottom: 10 }}>⚠ {errors.ownerName}</div>}
+        {errors.ownerPhone && <div className={styles.errorMsg} style={{ marginTop: -8, marginBottom: 10 }}>⚠ {errors.ownerPhone}</div>}
+        {form.ownerPhone.length === 10 && (
+          <div className={styles.toggleRow}>
+            <span className={styles.toggleLabel}>💬 WhatsApp on this number</span>
+            <label className={styles.toggle}>
+              <input
+                type="checkbox"
+                checked={form.ownerHasWhatsapp}
+                onChange={(e) => set("ownerHasWhatsapp", e.target.checked)}
+              />
+              <span className={styles.toggleSlider} />
+            </label>
+          </div>
+        )}
+      </div>
+
       {/* ── Location ── */}
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Location</div>
+
+        {/* One-tap GPS — capture while standing at the property */}
+        <label className={styles.label}>Exact location (GPS)</label>
+        <button
+          type="button"
+          onClick={captureGps}
+          disabled={gpsLoading}
+          className={styles.optBtn}
+          style={{
+            width: "100%", marginBottom: 6, padding: "12px",
+            fontWeight: 700,
+            ...(form.lat != null
+              ? { borderColor: "var(--color-primary)", color: "var(--color-primary)", background: "rgba(15,118,110,0.06)" }
+              : {}),
+            ...(errors.gps ? { borderColor: "var(--red)" } : {}),
+          }}
+        >
+          {gpsLoading
+            ? "⏳ Getting location…"
+            : form.lat != null
+              ? `✓ Location captured (${form.lat.toFixed(5)}, ${form.lng?.toFixed(5)}) — tap to retake`
+              : "📍 Capture location — tap while standing at the property"}
+        </button>
+        {gpsError && <div className={styles.errorMsg} style={{ marginBottom: 10 }}>⚠ {gpsError}</div>}
+        {errors.gps && !gpsError && <div className={styles.errorMsg} style={{ marginBottom: 10 }}>⚠ {errors.gps}</div>}
+        <div style={{ marginBottom: 14 }} />
 
         <label className={styles.label}>Area in Kota</label>
         <select

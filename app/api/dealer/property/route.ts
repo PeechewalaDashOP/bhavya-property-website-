@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     attached_bathroom, parking_available, wifi_included,
     nearest_coaching_hub, features, description,
     photoPaths, videoPaths, units, hostel_meta,
+    lat, lng, owner,
   } = body as Record<string, unknown>;
 
   if (!type || !ptype || !loc) {
@@ -53,6 +54,52 @@ export async function POST(req: NextRequest) {
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const db = createClient(supaUrl, serviceKey, { auth: { persistSession: false } });
+
+  // Owner routing: when the submitter passes an owner contact (field collection —
+  // the logged-in account is the collector, not the owner), attach the listing to
+  // a dealer row for that phone so leads reach the owner. Same find-or-create
+  // pattern as /api/public/post-property.
+  let listingDealerId = session.id;
+  const ownerObj = owner && typeof owner === "object" ? (owner as Record<string, unknown>) : null;
+  if (ownerObj) {
+    const ownerPhone = String(ownerObj.phone ?? "").replace(/\D/g, "");
+    const ownerName = String(ownerObj.name ?? "").trim();
+    const ownerWhatsapp = Boolean(ownerObj.whatsapp);
+    if (ownerPhone.length !== 10) {
+      return NextResponse.json({ error: "Owner phone must be 10 digits" }, { status: 400 });
+    }
+    if (ownerName.length < 2) {
+      return NextResponse.json({ error: "Owner name is required" }, { status: 400 });
+    }
+    const { data: existingDealer } = await db
+      .from("dealers")
+      .select("id")
+      .or(`phone.eq.${ownerPhone},phone.eq.91${ownerPhone}`)
+      .maybeSingle();
+    if (existingDealer) {
+      listingDealerId = existingDealer.id;
+    } else {
+      // Timestamp + random suffix for a unique bigint id (same scheme as the
+      // public post-property route). is_active=false keeps the owner out of
+      // public dealer listings while the FK stays valid.
+      const newId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+      const { error: dealerErr } = await db.from("dealers").insert({
+        id: newId,
+        name: ownerName,
+        role: "owner",
+        phone: ownerPhone,
+        whatsapp_number: ownerWhatsapp ? ownerPhone : null,
+        areas_covered: [],
+        years: 0,
+        rating: 0,
+        is_active: false,
+      });
+      if (dealerErr) {
+        return NextResponse.json({ error: dealerErr.message }, { status: 500 });
+      }
+      listingDealerId = newId;
+    }
+  }
 
   const bhkNum = Number(bhk) || 0;
   const hostelMetaObj = hostel_meta && typeof hostel_meta === "object"
@@ -109,7 +156,7 @@ export async function POST(req: NextRequest) {
     img: photoArr[0] ?? videoArr[0] ?? null,
     gallery: photoArr,
     videos: videoArr,
-    dealer_id: session.id,
+    dealer_id: listingDealerId,
     is_approved: false,
     is_featured: false,
     is_verified: false,
@@ -122,6 +169,17 @@ export async function POST(req: NextRequest) {
   // DB level (supabase/migration_listing_lifecycle.sql). Referencing it here
   // unconditionally would break every submission until that migration runs,
   // same reasoning as the hostel_meta column above.
+
+  // GPS coordinates — only set when captured (one-tap in the wizard). Omitting
+  // the keys keeps older callers that don't send them working unchanged.
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (Number.isFinite(latNum) && Number.isFinite(lngNum) &&
+      Math.abs(latNum) <= 90 && Math.abs(lngNum) <= 180 &&
+      (latNum !== 0 || lngNum !== 0)) {
+    insertRow.lat = latNum;
+    insertRow.lng = lngNum;
+  }
 
   // Only reference hostel_meta when the caller actually sends it (PG/Hostel flow).
   // Omitting the key entirely — rather than sending null — means standard

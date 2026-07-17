@@ -101,6 +101,14 @@ export const PARKING_TYPES = [
   { key: "car",         label: "Car",       icon: "🚗" },
 ] as const;
 
+export type ElectricityBilling = "included" | "metered" | "fixed";
+
+export const ELECTRICITY_OPTIONS: { key: ElectricityBilling; label: string; icon: string }[] = [
+  { key: "included", label: "Included in rent", icon: "✅" },
+  { key: "metered",  label: "Separate meter",   icon: "⚡" },
+  { key: "fixed",    label: "Fixed charge",     icon: "🧾" },
+];
+
 export const NOTICE_PERIODS = [
   { value: "15", label: "15 days" },
   { value: "30", label: "1 month" },
@@ -148,6 +156,7 @@ export type RoomConfig = {
   numRooms: string;
   rentPerBed: string;
   deposit: string;
+  messIncluded: boolean;    // is mess/food included in THIS rent figure?
   facilities: string[];     // keys from ROOM_FACILITIES
   coolingType: CoolingType;
 };
@@ -164,6 +173,7 @@ export function emptyRoomConfig(key: RoomCategoryKey): RoomConfig {
     numRooms: "",
     rentPerBed: "",
     deposit: "",
+    messIncluded: false,
     facilities: [],
     coolingType: "none",
   };
@@ -179,6 +189,13 @@ export type HostelForm = {
   address: string;
   pincode: string;
   landmark: string;
+  // One-tap GPS in the doorway — the field that can't be recaptured without a revisit
+  lat: number | null;
+  lng: number | null;
+  // Owner contact — leads route to this number. Blank = the logged-in dealer's number.
+  ownerName: string;
+  ownerPhone: string;
+  ownerHasWhatsapp: boolean;
   operationalSince: string;
   presentOnFloor: string;
   coachingHub: string;
@@ -194,6 +211,7 @@ export type HostelForm = {
   gateClosingTime: string;
   services: string[];
   foodProvided: boolean;
+  electricity: "" | ElectricityBilling;
 
   // Step 3
   commonAmenities: string[];
@@ -217,6 +235,11 @@ export function emptyHostelForm(): HostelForm {
     address: "",
     pincode: "",
     landmark: "",
+    lat: null,
+    lng: null,
+    ownerName: "",
+    ownerPhone: "",
+    ownerHasWhatsapp: true,
     operationalSince: "",
     presentOnFloor: "",
     coachingHub: "",
@@ -231,6 +254,7 @@ export function emptyHostelForm(): HostelForm {
     gateClosingTime: "22:00",
     services: [],
     foodProvided: false,
+    electricity: "",
 
     commonAmenities: [],
     parkingEnabled: false,

@@ -3,7 +3,7 @@
 import {
   HostelForm, RoomConfig,
   ROOM_FACILITIES, HOUSE_RULES, TENANT_TYPES, CORE_SERVICES,
-  NOTICE_PERIODS, GATE_TIMES, ROOM_CATEGORIES, COOLING_TYPES,
+  NOTICE_PERIODS, GATE_TIMES, ROOM_CATEGORIES, COOLING_TYPES, ELECTRICITY_OPTIONS,
   roomCategoryLabel, roomCategoryCapacity, emptyRoomConfig,
 } from "../types";
 import styles from "../styles.module.css";
@@ -164,6 +164,20 @@ export default function Step2Rooms({
                     onChange={(e) => setRoom(room.id, "deposit", e.target.value)}
                     style={{ marginBottom: 14 }}
                   />
+
+                  {/* Per-price mess flag — Kota rents are quoted both ways; this
+                      normalises every price so listings stay comparable. */}
+                  <div className={styles.toggleRow} style={{ marginBottom: 14 }}>
+                    <span className={styles.toggleLabel}>🍽️ Mess included in this rent</span>
+                    <label className={styles.toggle}>
+                      <input
+                        type="checkbox"
+                        checked={!!room.messIncluded}
+                        onChange={(e) => setRoom(room.id, "messIncluded", e.target.checked)}
+                      />
+                      <span className={styles.toggleSlider} />
+                    </label>
+                  </div>
 
                   <label className={styles.label} style={{ marginBottom: 8 }}>Cooling</label>
                   <div className={styles.optBtns} style={{ marginBottom: 14 }}>
@@ -357,6 +371,26 @@ export default function Step2Rooms({
             <span className={styles.toggleSlider} />
           </label>
         </div>
+      </div>
+
+      {/* ── Electricity ── */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>Electricity Bill</div>
+        <p className={styles.helpText} style={{ marginTop: -6, marginBottom: 12 }}>
+          How do tenants pay for electricity?
+        </p>
+        <div className={styles.optBtns}>
+          {ELECTRICITY_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              className={`${styles.optBtn} ${form.electricity === o.key ? styles.optBtnActive : ""}`}
+              onClick={() => set("electricity", o.key)}
+            >
+              {o.icon} {o.label}
+            </button>
+          ))}
+        </div>
+        {errors.electricity && <div className={styles.errorMsg}>⚠ {errors.electricity}</div>}
       </div>
     </>
   );

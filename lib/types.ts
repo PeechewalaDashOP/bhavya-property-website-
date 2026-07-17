@@ -100,6 +100,7 @@ export type HostelMeta = {
   gate_closing_time?: string | null;
   services?: string[];
   food_provided?: boolean;
+  electricity?: "included" | "metered" | "fixed" | null;
   common_amenities?: string[];
   parking_enabled?: boolean;
   parking_types?: string[];

@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import {
-  HostelForm, MEDIA_SECTIONS, PHOTO_TAGS, roomCategoryLabel,
+  HostelForm, MEDIA_SECTIONS, PHOTO_TAGS, roomCategoryLabel, emptyRoomConfig,
 } from "../types";
 import { compressImages } from "@/lib/imageCompress";
 import styles from "../styles.module.css";
@@ -76,7 +76,7 @@ export default function Step4Media({
 
   const roomSections = form.roomCategories.map((key) => ({
     key,
-    label: `${roomCategoryLabel(form.rooms.find((r) => r.key === key) ?? { id: "", key, customLabel: "", numRooms: "", rentPerBed: "", deposit: "", facilities: [], coolingType: "none" })} Room`,
+    label: `${roomCategoryLabel(form.rooms.find((r) => r.key === key) ?? emptyRoomConfig(key))} Room`,
     icon: "🛏️",
   }));
 
