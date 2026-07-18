@@ -62,8 +62,9 @@ export async function POST(req: NextRequest) {
   const msg91AuthKey = process.env.MSG91_AUTH_KEY;
   const msg91WhatsappFrom = process.env.MSG91_WHATSAPP_NUMBER;
   const msg91OtpTemplate = process.env.MSG91_OTP_WHATSAPP_TEMPLATE_ID;
+  const msg91Namespace = process.env.MSG91_WHATSAPP_NAMESPACE;
 
-  if (!url || !serviceRole || !msg91AuthKey || !msg91WhatsappFrom || !msg91OtpTemplate) {
+  if (!url || !serviceRole || !msg91AuthKey || !msg91WhatsappFrom || !msg91OtpTemplate || !msg91Namespace) {
     return NextResponse.json({ error: "OTP service not configured." }, { status: 503 });
   }
 
@@ -116,14 +117,15 @@ export async function POST(req: NextRequest) {
   // with a Copy Code button), NOT the SMS OTP widget. Verification stays 100%
   // local (see /api/otp/verify) — MSG91 here is delivery-only.
   //
-  // Component shape: body carries the code as {{1}}; the button is Meta's
-  // standard "copy_code" Authentication button, whose parameter type is
-  // "coupon_code" (not "text" — that's only for url buttons, used elsewhere
-  // in this codebase for the dealer-alert templates). This matches Meta's
-  // documented Cloud API shape for Authentication templates with a Copy Code
-  // button; if MSG91's dashboard "sample request" for this exact template
-  // shows a different key name, match that instead — it's the authoritative
-  // source over any generic reference.
+  // Payload shape: this is MSG91's OWN abstraction over Meta's Cloud API for
+  // this endpoint — `to_and_components` with a `components` OBJECT keyed by
+  // "body_1"/"button_1" etc, NOT Meta's raw `components` ARRAY (which is what
+  // the dealer-alert/nudge sends elsewhere in this codebase use — those were
+  // never actually tested against a real template and likely have the same
+  // shape bug; fix when that work happens). Confirmed against the literal
+  // "Code {JSON}" sample MSG91's dashboard generates for THIS template
+  // (WhatsApp → Templates → prop100_otp_verification → <> icon) — don't
+  // "correct" this shape from Meta docs again, match MSG91's sample exactly.
   let msg91Failed = false;
   // Diagnostic only — populated on failure, never contains the OTP or the
   // auth key. Logged via console.error() below so it shows up in Vercel's
@@ -143,18 +145,19 @@ export async function POST(req: NextRequest) {
           integrated_number: msg91WhatsappFrom,
           content_type: "template",
           payload: {
-            to: "91" + phone,
+            messaging_product: "whatsapp",
             type: "template",
             template: {
               name: msg91OtpTemplate,
-              language: { code: "en" },
-              components: [
-                { type: "body", parameters: [{ type: "text", text: otp }] },
+              language: { code: "en", policy: "deterministic" },
+              namespace: msg91Namespace,
+              to_and_components: [
                 {
-                  type: "button",
-                  sub_type: "copy_code",
-                  index: "0",
-                  parameters: [{ type: "coupon_code", coupon_code: otp }],
+                  to: ["91" + phone],
+                  components: {
+                    body_1: { type: "text", value: otp },
+                    button_1: { subtype: "url", type: "text", value: otp },
+                  },
                 },
               ],
             },
@@ -163,7 +166,11 @@ export async function POST(req: NextRequest) {
       }
     );
     const msg91Data = await msg91Res.json().catch(() => null) as Record<string, unknown> | null;
-    if (!msg91Res.ok || msg91Data?.type === "error") {
+    // MSG91's real failure shape is {status:"fail", hasError:true, errors:"..."}
+    // — NOT {type:"error"} (that check was wrong from the start; HTTP 400 caught
+    // the first real failure anyway, but a 200-with-in-body-failure would have
+    // slipped through undetected).
+    if (!msg91Res.ok || msg91Data?.status === "fail" || msg91Data?.hasError === true) {
       msg91Failed = true;
       msg91FailureDetail = `HTTP ${msg91Res.status} — ${JSON.stringify(msg91Data)}`;
     }

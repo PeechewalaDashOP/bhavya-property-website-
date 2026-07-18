@@ -495,6 +495,7 @@ SUPABASE_SERVICE_ROLE_KEY=              # server only — never in client code
 # MSG91 — customer OTP + dealer notifications, both over WhatsApp (single provider)
 MSG91_AUTH_KEY=                         # server only — never in client code
 MSG91_OTP_WHATSAPP_TEMPLATE_ID=         # Meta Authentication template w/ Copy Code button
+MSG91_WHATSAPP_NAMESPACE=               # WABA namespace (shared by all templates on the account)
 MSG91_OTP_TEMPLATE_ID=                  # DEPRECATED — old SMS/DLT template, unread
 MSG91_WHATSAPP_TEMPLATE_ID=             # Dealer new-lead alert template name
 MSG91_WHATSAPP_NUMBER=                  # WhatsApp sender number registered in MSG91
