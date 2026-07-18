@@ -335,14 +335,23 @@ Ref: KP-2047
 - Admin (Bhavya) sees full picture at all times
 
 ### OTP Implementation
-- **Primary provider: MSG91 OTP API — NOT Twilio, NOT Supabase's built-in phone auth**
+- **Primary provider: MSG91 WhatsApp Business API — NOT SMS, NOT Twilio, NOT Supabase's
+  built-in phone auth.** Customer OTP is delivered over WhatsApp using a Meta
+  Authentication-category template with a Copy Code button
+  (`MSG91_OTP_WHATSAPP_TEMPLATE_ID`), sent via
+  `api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/` — the same endpoint
+  already used for dealer new-lead alerts and the 15-day nudge, just a different
+  template. `control.msg91.com/api/v5/otp` (the SMS/voice OTP widget) is NOT used —
+  an earlier version of this route called that endpoint by mistake; it has been
+  replaced. `MSG91_OTP_TEMPLATE_ID` (the old DLT SMS template var) is deprecated and
+  unread.
 - Supabase's `signInWithOtp` / `verifyOtp` are NOT used anywhere. Removed entirely.
 - Why not Supabase phone auth: creates ghost auth "users" for customers who are just
   verifying their number, not logging in. Unnecessary and wrong semantic.
-- Why MSG91 over Twilio: ~₹0.15/OTP vs ~₹0.45/OTP in India. MSG91 handles DLT
-  (Distributed Ledger Technology) compliance — mandatory for all Indian businesses
-  sending OTP/promotional SMS. Twilio requires separate DLT registration. MSG91 also
-  handles WhatsApp, so it's one provider + one billing account for everything.
+- Verification is 100% local regardless of delivery channel — MSG91/Meta is never
+  asked to validate the code. `/api/otp/send` generates, hashes, and stores the OTP
+  itself; `/api/otp/verify` compares it server-side. This is why the channel (SMS vs
+  WhatsApp) was swappable without touching hashing, expiry, attempts, or schema.
 
 **How it works (Option B — fully implemented):**
 1. `/api/otp/send`:
@@ -352,7 +361,8 @@ Ref: KP-2047
    - Generates 6-digit OTP via `crypto.randomInt(100000, 1000000)` (CSPRNG)
    - Hashes it: `SHA-256("otp:phone")` — phone acts as per-row salt
    - Inserts row into `otp_verifications` (phone, otp_hash, expires_at=+10min)
-   - Calls MSG91 API to send SMS; if MSG91 fails, rolls back DB row
+   - Sends the code via MSG91 WhatsApp (Authentication template, Copy Code button);
+     if the send fails, rolls back the DB row
 2. `/api/otp/verify`:
    - Looks up latest unverified, unexpired row for this phone
    - Returns 429 if attempts >= 3 (enforced server-side in DB)
@@ -482,10 +492,11 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   # anon/public key — safe in browser
 SUPABASE_SERVICE_ROLE_KEY=              # server only — never in client code
 
-# MSG91 — OTP delivery + WhatsApp dealer notifications (single provider)
+# MSG91 — customer OTP + dealer notifications, both over WhatsApp (single provider)
 MSG91_AUTH_KEY=                         # server only — never in client code
-MSG91_OTP_TEMPLATE_ID=                  # DLT-registered OTP template ID
-MSG91_WHATSAPP_TEMPLATE_ID=             # WhatsApp message template name
+MSG91_OTP_WHATSAPP_TEMPLATE_ID=         # Meta Authentication template w/ Copy Code button
+MSG91_OTP_TEMPLATE_ID=                  # DEPRECATED — old SMS/DLT template, unread
+MSG91_WHATSAPP_TEMPLATE_ID=             # Dealer new-lead alert template name
 MSG91_WHATSAPP_NUMBER=                  # WhatsApp sender number registered in MSG91
 
 # App URL (for magic links in dealer WhatsApp)

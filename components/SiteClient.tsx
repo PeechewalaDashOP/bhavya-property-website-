@@ -221,8 +221,20 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     setOtpAttempts(0); setResendCooldown(0);
     clearInterval(resendTimerRef.current);
   }
-  // OTP temporarily disabled — submits directly until WhatsApp Business API is approved.
-  // To revert: restore this function to call /api/otp/send and setGatewayStep("otp").
+  function startResendCooldown() {
+    setResendCooldown(60);
+    resendTimerRef.current = setInterval(() => {
+      setResendCooldown((c) => {
+        if (c <= 1) { clearInterval(resendTimerRef.current); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+  }
+  // Sends the OTP over WhatsApp and moves to the verify step. Also reused as
+  // the "Resend OTP" handler (called while gatewayStep is already "otp") —
+  // resetting otpAttempts here is correct in that case too, since a fresh
+  // send creates a fresh otp_verifications row server-side with its own
+  // 3-attempt budget.
   async function sendOtp() {
     if (!leadCtx || submitting) return;
     if (ldName.trim().length < 2) return showToast("Please enter your name");
@@ -230,36 +242,16 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     if (phone.length !== 10) return showToast("Enter a valid 10-digit phone number");
     setSubmitting(true);
     try {
-      const res = await fetch("/api/leads", {
+      const res = await fetch("/api/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: ldName.trim(),
-          phone,
-          propId: leadCtx.propId ?? null,
-          dealerId: leadCtx.dealerId ?? null,
-          moveInDate: ldMoveIn || null,
-          occupants: parseInt(ldOccupants) || 1,
-        }),
+        body: JSON.stringify({ phone }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
-      const ref: string = data.ref;
-      const dealerPhone: string | null = data.dealerPhone ?? null;
-      if (leadCtx.propId != null) {
-        const next = new Set(unlock); next.add(leadCtx.propId);
-        setUnlock(next); persistUnlock(next);
-        setUnlockRef((m) => ({ ...m, [leadCtx.propId as number]: ref }));
-        if (dealerPhone) setRevealPhones((m) => ({ ...m, [leadCtx.propId as number]: dealerPhone }));
-      }
-      const wasDealer = leadCtx.kind === "dealer";
-      const dealerCtx = leadCtx;
-      setLeadCtx(null); setGatewayStep("form");
-      showToast("Contact unlocked ✓ Ref " + ref);
-      if (wasDealer) {
-        setModalProp(null);
-        setDealerReveal({ ref, name: dealerCtx.dealerName || "", phone: dealerPhone || "" });
-      }
+      setGatewayStep("otp");
+      setLdOtp(""); setOtpError(""); setOtpAttempts(0);
+      startResendCooldown();
     } catch (err) {
       showToast((err as Error).message);
     } finally {

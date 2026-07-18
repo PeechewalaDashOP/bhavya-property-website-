@@ -147,35 +147,26 @@ function LeadSheet({
     }, 1000);
   }
 
-  // OTP temporarily disabled — submits directly until WhatsApp Business API is approved.
-  async function submitForm() {
+  // Sends the OTP over WhatsApp and moves to the verify step. The lead itself
+  // (name, unit, move-in date, etc.) isn't saved yet — that happens in
+  // submitOtp() below, only after the code is verified.
+  async function sendOtp() {
     const cleanPhone = phone.replace(/\D/g, "");
     if (name.trim().length < 2) { setError("Enter your name (at least 2 characters)"); return; }
     if (cleanPhone.length !== 10) { setError("Enter a valid 10-digit phone number"); return; }
     setLoading(true);
     setError("");
-    const res = await fetch("/api/leads", {
+    const res = await fetch("/api/otp/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(),
-        phone: cleanPhone,
-        propId: property.id,
-        dealerId: property.dealers?.id ?? null,
-        unitId: selectedUnit?.id ?? null,
-        unitLabel: selectedUnit?.label ?? null,
-        moveInDate: moveIn || null,
-        occupants,
-        intent: "contact",
-        msg: msg.trim() || null,
-      }),
+      body: JSON.stringify({ phone: cleanPhone }),
     });
     const data = await res.json();
     setLoading(false);
-    if (!res.ok) { setError(data.error ?? "Failed to save. Please try again."); return; }
-    setDealerPhone(data.dealerPhone ?? "");
-    setRef(data.ref ?? "");
-    setPhase("done");
+    if (!res.ok) { setError(data.error ?? "Failed to send OTP. Please try again."); return; }
+    setOtp("");
+    setPhase("otp");
+    startCooldown();
   }
 
   async function submitOtp() {
@@ -316,10 +307,10 @@ function LeadSheet({
 
               <button
                 className={styles.submitBtn}
-                onClick={submitForm}
+                onClick={sendOtp}
                 disabled={loading}
               >
-                {loading ? "Saving…" : "Get Contact Details →"}
+                {loading ? "Sending…" : "Get Contact Details →"}
               </button>
 
               <p style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
