@@ -55,24 +55,29 @@ NOT a success fee — which is why dealer/customer collusion can't hurt them. So
   with two-sided confirmation, but it is NOT yet wired into this Next.js app.
 Revenue plan detail: ../Business-Model-and-Workflow-Plan.md
 
-## Where we stopped (current status)
-DONE: full UI ported 1:1; SSR for SEO; Supabase wiring with sample-data fallback;
-schema + seed script; lead gateway (localStorage for demo); deal tracker (localStorage);
-rule-based AI chatbot; "view more" pagination.
+## Where we stopped (current status — updated 2026-07-18)
+
+**Read `docs/audit/CONTINUATION.md` for the full handoff** — this section is the short
+version. DONE (all live, tested on real devices): full UI, SSR/SEO, Supabase wiring,
+admin dashboard, dealer dashboard + post-a-property (two flows: standard + hostel
+wizard), customer OTP over WhatsApp (MSG91), verified-device flow (30-day cookie, no
+repeat OTP), lead dedup, magic-link dealer actions, 15-day availability nudge cron.
 
 NOT yet done (pick up here):
-1. **Leads to Supabase end-to-end.** `saveLead()` inserts to `leads`, but the deal
-   tracker still reads from localStorage. Wire it to read/update the `leads` table
-   behind an admin-only (service-role) route or RLS by role.
-2. **Dealer/Admin auth.** Add Supabase Auth so dealers log in, accept leads, update
-   status; admin oversees. (Port logic from ../kota-simple/system.html.)
-3. **Post-a-property page.** Form + photo upload to Supabase Storage (or Cloudinary),
-   writes to `properties`, goes live after admin approval.
-4. **Real images** — replace Unsplash sample URLs with dealer-uploaded photos.
-5. **Optional polish:** light Framer Motion micro-interactions ONLY (no 3D/WebGL).
-   Keep it fast — mobile LCP < 2.5s. (Owner decided AGAINST heavy 3D animation.)
-6. **SEO depth:** per-locality landing pages (e.g. /kota/talwandi) + sitemap for
-   "2 BHK Talwandi Kota" style queries.
+1. **Wallet billing flip.** Infrastructure is built (`lib/leadService.ts`,
+   `supabase/migration_wallet.sql`, `/admin/wallet`, `/dealer/wallet`) but inert —
+   `BILLING_ENABLED` is unset, so every lead is currently free for both customer and
+   owner. Flip = set the env var + redeploy, once the low-balance and contact-delivery
+   MSG91 templates are approved. See CONTINUATION.md.
+2. **Dealer OTP login** — currently phone-only (`/api/dealer/login/direct`), deferred
+   on purpose. No dealer new-lead-alert template exists in MSG91 yet either, so dealer
+   WhatsApp notifications are silently no-op-ing (fail-silent by design).
+3. **Hostel-collection product roadmap** (pre-dates the billing work) — see
+   `docs/audit/PLAN.md`, `BLOCKERS.md`, `REALITY.md`, `MIGRATION.md`, and the
+   `design-system/` folder for the hostel-first UI rework that hasn't started yet.
+4. **SEO depth** — per-locality/campus pages exist (`/kota/[slug]`, `/near/[hub]`) but
+   the broader hostel-first SEO structure from `docs/research/03-SEARCH-SPEC.md` §D7
+   hasn't been built.
 
 ## Constraints / gotchas
 - Mobile-first, fast. Most users on mid-range Android + patchy 4G.
@@ -573,14 +578,17 @@ Invalid"`). Never edit the payload shape without checking that sample first.
 
 ## Immediate Priority Order (Work in This Order Only)
 1. ✅ Leads → Supabase end-to-end (kill localStorage for leads completely)
-2. ✅ OTP verification flow for lead gateway (MSG91 direct — not Supabase phone auth)
-3. ✅ WhatsApp notification to dealer on new lead (MSG91)
+2. ✅ OTP verification flow for lead gateway (WhatsApp via MSG91 — not Supabase phone auth)
+3. ✅ Verified-device flow + lead dedup (added 2026-07-18, see CONTINUATION.md)
 4. ✅ Magic link system (/api/deal/[token]/[action])
-5. Admin dashboard — leads view + property management
-6. Dealer OTP login + single-page dealer dashboard
-7. Post-a-property form (dealer submits → Bhavya approves)
-8. SEO — sitemap.xml + OG tags per property + locality pages
-9. AI chatbot upgrade (Claude API, Hindi + English both)
+5. ✅ Admin dashboard — leads, properties, area requests, wallets
+6. ✅ Post-a-property form (standard + hostel wizard, dealer submits → Bhavya approves)
+7. ✅ Wallet billing infrastructure — built, inert behind `BILLING_ENABLED`
+8. Dealer OTP login (currently phone-only, deferred on purpose) + dealer new-lead
+   WhatsApp alert (code is correct, no MSG91 template created yet)
+9. Billing flip (needs 2 more MSG91 templates approved first — see CONTINUATION.md)
+10. Hostel-collection SEO/homepage roadmap (docs/audit/PLAN.md) — not started
+11. AI chatbot upgrade (Claude API, Hindi + English both)
 
 Do not work on item N+1 until item N is working and tested on mobile.
 
