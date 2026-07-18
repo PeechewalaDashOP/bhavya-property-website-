@@ -125,6 +125,10 @@ export async function POST(req: NextRequest) {
   // shows a different key name, match that instead — it's the authoritative
   // source over any generic reference.
   let msg91Failed = false;
+  // Diagnostic only — populated on failure, never contains the OTP or the
+  // auth key. Logged via console.error() below so it shows up in Vercel's
+  // Logs tab; nothing is printed on the success path.
+  let msg91FailureDetail = "";
   try {
     const msg91Res = await fetch(
       "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
@@ -161,12 +165,17 @@ export async function POST(req: NextRequest) {
     const msg91Data = await msg91Res.json().catch(() => null) as Record<string, unknown> | null;
     if (!msg91Res.ok || msg91Data?.type === "error") {
       msg91Failed = true;
+      msg91FailureDetail = `HTTP ${msg91Res.status} — ${JSON.stringify(msg91Data)}`;
     }
-  } catch {
+  } catch (err) {
     msg91Failed = true;
+    msg91FailureDetail = `fetch threw — ${err instanceof Error ? err.message : String(err)}`;
   }
 
   if (msg91Failed) {
+    console.error(
+      `[otp/send] MSG91 WhatsApp send failed for phone ending ${phone.slice(-4)}: ${msg91FailureDetail}`
+    );
     // Roll back the DB row so the user can retry immediately
     await db.from("otp_verifications").delete().eq("phone", phone).eq("otp_hash", otp_hash);
     return NextResponse.json(
