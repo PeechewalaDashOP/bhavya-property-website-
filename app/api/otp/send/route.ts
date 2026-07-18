@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { sendWhatsAppTemplate } from "@/lib/msg91";
 
 function hashOtp(otp: string, phone: string): string {
   return crypto.createHash("sha256").update(`${otp}:${phone}`).digest("hex");
@@ -115,73 +116,21 @@ export async function POST(req: NextRequest) {
 
   // 5. Send via MSG91's WhatsApp Business API (Authentication-category template
   // with a Copy Code button), NOT the SMS OTP widget. Verification stays 100%
-  // local (see /api/otp/verify) — MSG91 here is delivery-only.
-  //
-  // Payload shape: this is MSG91's OWN abstraction over Meta's Cloud API for
-  // this endpoint — `to_and_components` with a `components` OBJECT keyed by
-  // "body_1"/"button_1" etc, NOT Meta's raw `components` ARRAY (which is what
-  // the dealer-alert/nudge sends elsewhere in this codebase use — those were
-  // never actually tested against a real template and likely have the same
-  // shape bug; fix when that work happens). Confirmed against the literal
-  // "Code {JSON}" sample MSG91's dashboard generates for THIS template
-  // (WhatsApp → Templates → prop100_otp_verification → <> icon) — don't
-  // "correct" this shape from Meta docs again, match MSG91's sample exactly.
-  let msg91Failed = false;
-  // Diagnostic only — populated on failure, never contains the OTP or the
-  // auth key. Logged via console.error() below so it shows up in Vercel's
-  // Logs tab; nothing is printed on the success path.
-  let msg91FailureDetail = "";
-  try {
-    const msg91Res = await fetch(
-      "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
-      {
-        method: "POST",
-        headers: {
-          authkey: msg91AuthKey,
-          "Content-Type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          integrated_number: msg91WhatsappFrom,
-          content_type: "template",
-          payload: {
-            messaging_product: "whatsapp",
-            type: "template",
-            template: {
-              name: msg91OtpTemplate,
-              language: { code: "en", policy: "deterministic" },
-              namespace: msg91Namespace,
-              to_and_components: [
-                {
-                  to: ["91" + phone],
-                  components: {
-                    body_1: { type: "text", value: otp },
-                    button_1: { subtype: "url", type: "text", value: otp },
-                  },
-                },
-              ],
-            },
-          },
-        }),
-      }
-    );
-    const msg91Data = await msg91Res.json().catch(() => null) as Record<string, unknown> | null;
-    // MSG91's real failure shape is {status:"fail", hasError:true, errors:"..."}
-    // — NOT {type:"error"} (that check was wrong from the start; HTTP 400 caught
-    // the first real failure anyway, but a 200-with-in-body-failure would have
-    // slipped through undetected).
-    if (!msg91Res.ok || msg91Data?.status === "fail" || msg91Data?.hasError === true) {
-      msg91Failed = true;
-      msg91FailureDetail = `HTTP ${msg91Res.status} — ${JSON.stringify(msg91Data)}`;
-    }
-  } catch (err) {
-    msg91Failed = true;
-    msg91FailureDetail = `fetch threw — ${err instanceof Error ? err.message : String(err)}`;
-  }
+  // local (see /api/otp/verify) — MSG91 here is delivery-only. The payload
+  // shape lives in lib/msg91.ts (their to_and_components format, confirmed
+  // working against this exact template).
+  const sendResult = await sendWhatsAppTemplate({
+    to: "91" + phone,
+    templateName: msg91OtpTemplate,
+    components: {
+      body_1: { type: "text", value: otp },
+      button_1: { subtype: "url", type: "text", value: otp },
+    },
+  });
 
-  if (msg91Failed) {
+  if (!sendResult.ok) {
     console.error(
-      `[otp/send] MSG91 WhatsApp send failed for phone ending ${phone.slice(-4)}: ${msg91FailureDetail}`
+      `[otp/send] MSG91 WhatsApp send failed for phone ending ${phone.slice(-4)}: ${sendResult.detail}`
     );
     // Roll back the DB row so the user can retry immediately
     await db.from("otp_verifications").delete().eq("phone", phone).eq("otp_hash", otp_hash);

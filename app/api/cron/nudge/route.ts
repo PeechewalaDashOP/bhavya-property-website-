@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendWhatsAppTemplate } from "@/lib/msg91";
 
 function serviceDb() {
   return createClient(
@@ -22,51 +23,19 @@ async function sendNudgeWhatsApp(
   staleCount: number,
   appUrl: string
 ): Promise<boolean> {
-  const authKey = process.env.MSG91_AUTH_KEY;
-  const from = process.env.MSG91_WHATSAPP_NUMBER;
   const template = process.env.MSG91_NUDGE_TEMPLATE_ID;
-  if (!authKey || !from || !template) return false;
+  if (!template) return false;
 
-  const availUrl = `${appUrl}/dealer/availability`;
-
-  try {
-    const res = await fetch(
-      "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
-      {
-        method: "POST",
-        headers: {
-          authkey: authKey,
-          "Content-Type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          integrated_number: from,
-          content_type: "template",
-          payload: {
-            to: "91" + dealerPhone,
-            type: "template",
-            template: {
-              name: template,
-              language: { code: "en" },
-              components: [
-                {
-                  type: "body",
-                  parameters: [
-                    { type: "text", text: dealerName },
-                    { type: "text", text: String(staleCount) },
-                    { type: "text", text: availUrl },
-                  ],
-                },
-              ],
-            },
-          },
-        }),
-      }
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
+  const res = await sendWhatsAppTemplate({
+    to: "91" + dealerPhone,
+    templateName: template,
+    components: {
+      body_1: { type: "text", value: dealerName },
+      body_2: { type: "text", value: String(staleCount) },
+      body_3: { type: "text", value: `${appUrl}/dealer/availability` },
+    },
+  });
+  return res.ok;
 }
 
 export async function GET(req: NextRequest) {

@@ -68,6 +68,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 Area Requests
               </Link>
+              <Link
+                href="/admin/wallet"
+                style={{
+                  color: pathname === "/admin/wallet" ? "#fff" : "#7a8fa3",
+                  fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 6,
+                  background: pathname === "/admin/wallet" ? "rgba(255,255,255,.12)" : "transparent",
+                  textDecoration: "none", transition: "all 0.15s",
+                }}
+              >
+                Wallets
+              </Link>
             </div>
           </div>
           <button

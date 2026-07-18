@@ -220,6 +220,17 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     setGatewayStep("form"); setLdOtp(""); setOtpError("");
     setOtpAttempts(0); setResendCooldown(0);
     clearInterval(resendTimerRef.current);
+    // Verified-device prefill: if this browser OTP-verified in the last 30
+    // days (httpOnly cookie), pre-fill name+phone so the reveal is one tap.
+    fetch("/api/leads/verified")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.verified) {
+          if (d.name) setLdName(String(d.name));
+          if (d.phone) setLdPhone(String(d.phone));
+        }
+      })
+      .catch(() => {});
   }
   function startResendCooldown() {
     setResendCooldown(60);
@@ -229,6 +240,68 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         return c - 1;
       });
     }, 1000);
+  }
+  /* Shared success handling for both the verified path and the OTP path.
+     billing === "pending": owner's wallet couldn't cover the lead — contact
+     is withheld, customer gets a "will contact you" promise instead. */
+  function handleLeadSuccess(data: { ref: string; dealerPhone?: string | null; billing?: string }) {
+    if (!leadCtx) return;
+    const ref: string = data.ref;
+    const dealerPhone: string | null = data.dealerPhone ?? null;
+    const pending = data.billing === "pending";
+    if (!pending && leadCtx.propId != null) {
+      const next = new Set(unlock); next.add(leadCtx.propId);
+      setUnlock(next); persistUnlock(next);
+      setUnlockRef((m) => ({ ...m, [leadCtx.propId as number]: ref }));
+      if (dealerPhone) setRevealPhones((m) => ({ ...m, [leadCtx.propId as number]: dealerPhone }));
+    }
+    const wasDealer = leadCtx.kind === "dealer";
+    const dealerCtx = leadCtx;
+    setLeadCtx(null); setGatewayStep("form");
+    if (pending) {
+      showToast("Request sent ✓ Ref " + ref + " — owner will contact you soon");
+    } else {
+      showToast("Contact unlocked ✓ Ref " + ref);
+      if (wasDealer) {
+        setModalProp(null);
+        setDealerReveal({ ref, name: dealerCtx.dealerName || "", phone: dealerPhone || "" });
+      }
+    }
+  }
+  // One-round-trip path for verified devices; falls back to OTP when the
+  // server says the cookie is missing/stale/for a different number.
+  async function submitContact() {
+    if (!leadCtx || submitting) return;
+    if (ldName.trim().length < 2) return showToast("Please enter your name");
+    const phone = ldPhone.replace(/\D/g, "");
+    if (phone.length !== 10) return showToast("Enter a valid 10-digit phone number");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/leads/verified", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: ldName.trim(),
+          phone,
+          propId: leadCtx.propId ?? null,
+          dealerId: leadCtx.dealerId ?? null,
+          moveInDate: ldMoveIn || null,
+          occupants: parseInt(ldOccupants) || 1,
+        }),
+      });
+      if (res.status === 401) {
+        setSubmitting(false);
+        await sendOtp();
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong");
+      handleLeadSuccess(data);
+    } catch (err) {
+      showToast((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   }
   // Sends the OTP over WhatsApp and moves to the verify step. Also reused as
   // the "Resend OTP" handler (called while gatewayStep is already "otp") —
@@ -284,22 +357,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         setOtpError(data.error || "Invalid OTP. Please try again.");
         return;
       }
-      const ref: string = data.ref;
-      const dealerPhone: string | null = data.dealerPhone ?? null;
-      if (leadCtx.propId != null) {
-        const next = new Set(unlock); next.add(leadCtx.propId);
-        setUnlock(next); persistUnlock(next);
-        setUnlockRef((m) => ({ ...m, [leadCtx.propId as number]: ref }));
-        if (dealerPhone) setRevealPhones((m) => ({ ...m, [leadCtx.propId as number]: dealerPhone }));
-      }
-      const wasDealer = leadCtx.kind === "dealer";
-      const dealerCtx = leadCtx;
-      setLeadCtx(null); setGatewayStep("form");
-      showToast("Contact unlocked ✓ Ref " + ref);
-      if (wasDealer) {
-        setModalProp(null);
-        setDealerReveal({ ref, name: dealerCtx.dealerName || "", phone: dealerPhone || "" });
-      }
+      handleLeadSuccess(data);
     } catch (err) {
       setOtpError((err as Error).message);
     } finally {
@@ -797,7 +855,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                     <option value="4">4+ people</option>
                   </select>
                 </div>
-                <button className="btn" onClick={sendOtp} disabled={submitting}>
+                <button className="btn" onClick={submitContact} disabled={submitting}>
                   {submitting ? "Saving…" : "Get contact details →"}
                 </button>
                 <p className="refnote">🔒 Your details are shared only with this partner — no spam, no brokerage fee.</p>

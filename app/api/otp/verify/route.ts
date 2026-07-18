@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { fmt } from "@/lib/format";
-
-function makeRef(): string {
-  return "P100-" + Math.floor(1000 + Math.random() * 9000);
-}
+import { createLead } from "@/lib/leadService";
+import {
+  signPhoneToken,
+  PHONE_VERIFY_COOKIE,
+  PHONE_VERIFY_MAX_AGE_S,
+} from "@/lib/phoneVerifySession";
 
 function hashOtp(otp: string, phone: string): string {
   return crypto.createHash("sha256").update(`${otp}:${phone}`).digest("hex");
 }
 
 type OtpRow = { id: number; otp_hash: string; attempts: number };
-type DealerRow = { phone: string; name: string };
-type PropRow = { title: string; price: number };
-type LeadMeta = { magic_token: string };
 
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
@@ -113,127 +111,49 @@ export async function POST(req: NextRequest) {
     .update({ verified_at: new Date().toISOString() })
     .eq("id", otpRow.id);
 
-  // Generate unique reference code and insert lead
-  let ref = makeRef();
-  const { data: clash } = await db
-    .from("leads")
-    .select("reference_code")
-    .eq("reference_code", ref)
-    .maybeSingle();
-  if (clash) ref = makeRef();
-
-  const { error: insertError } = await db.from("leads").insert({
-    reference_code: ref,
-    customer_name: name,
-    customer_phone: phone,
-    property_id: propId,
-    dealer_id: dealerId,
-    unit_id: unitId,
-    unit_label: unitLabel,
-    intent,
-    msg,
-    move_in_date: moveInDate,
-    occupants,
-    source_url: req.headers.get("referer") ?? null,
-    status: "new",
-  });
-
-  if (insertError) {
+  // Create the lead through the shared service (dedup + billing + notify all
+  // live there — one code path for OTP, verified-device, and general leads).
+  let result;
+  try {
+    result = await createLead(db, {
+      name,
+      phone,
+      propId,
+      dealerId,
+      unitId,
+      unitLabel,
+      moveInDate,
+      occupants,
+      intent,
+      msg,
+      sourceUrl: req.headers.get("referer") ?? null,
+    });
+  } catch {
     return NextResponse.json(
       { error: "Lead verified but failed to save. Please try again." },
       { status: 500 }
     );
   }
 
-  // Fetch magic_token, dealer info, and property info in parallel
-  const [{ data: leadMeta }, { data: dealerRow }, { data: propRow }] = await Promise.all([
-    db.from("leads").select("magic_token").eq("reference_code", ref).maybeSingle(),
-    dealerId
-      ? db.from("dealers").select("phone, name").eq("id", dealerId).maybeSingle()
-      : Promise.resolve({ data: null }),
-    propId
-      ? db.from("properties").select("title, price").eq("id", propId).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-
-  const magicToken = (leadMeta as LeadMeta | null)?.magic_token ?? null;
-  const dealerPhone = (dealerRow as DealerRow | null)?.phone ?? null;
-  const dealerName = (dealerRow as DealerRow | null)?.name ?? null;
-  const propTitle = (propRow as PropRow | null)?.title ?? null;
-  const propPrice = (propRow as PropRow | null)?.price ?? null;
-
-  // Send WhatsApp to dealer — non-critical, fail silently
-  const msg91AuthKey = process.env.MSG91_AUTH_KEY;
-  const msg91WhatsappFrom = process.env.MSG91_WHATSAPP_NUMBER;
-  const msg91Template = process.env.MSG91_WHATSAPP_TEMPLATE_ID;
-
-  if (msg91AuthKey && msg91WhatsappFrom && msg91Template && dealerPhone && magicToken) {
-    const appUrl = (
-      process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.get("host")}`
-    ).replace(/\/$/, "");
-
-    const propLabel = propTitle
-      ? `${propTitle}${propPrice ? " " + fmt(propPrice) : ""}`
-      : "General enquiry";
-    const maskedPhone = phone.slice(0, 4) + "XXXXXX";
-
-    try {
-      await fetch(
-        "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
-        {
-          method: "POST",
-          headers: {
-            authkey: msg91AuthKey,
-            "Content-Type": "application/json",
-            accept: "application/json",
-          },
-          body: JSON.stringify({
-            integrated_number: msg91WhatsappFrom,
-            content_type: "template",
-            payload: {
-              to: "91" + dealerPhone,
-              type: "template",
-              template: {
-                name: msg91Template,
-                language: { code: "en" },
-                components: [
-                  {
-                    type: "body",
-                    parameters: [
-                      { type: "text", text: propLabel },
-                      { type: "text", text: name },
-                      { type: "text", text: maskedPhone },
-                      { type: "text", text: moveInDate || "Not specified" },
-                      { type: "text", text: String(occupants ?? 1) },
-                      { type: "text", text: ref },
-                    ],
-                  },
-                  {
-                    type: "button",
-                    sub_type: "url",
-                    index: "0",
-                    parameters: [
-                      { type: "text", text: `${magicToken}/contacted` },
-                    ],
-                  },
-                  {
-                    type: "button",
-                    sub_type: "url",
-                    index: "1",
-                    parameters: [
-                      { type: "text", text: `${magicToken}/closed` },
-                    ],
-                  },
-                ],
-              },
-            },
-          }),
-        }
-      );
-    } catch {
-      // WhatsApp delivery failure does not fail the lead — admin sees it in Supabase
-    }
+  // Set the verified-device cookie: this phone won't need OTP again on this
+  // browser for 30 days. httpOnly — nothing readable client-side. A verify
+  // with a different phone overwrites it (that IS the rotation mechanism).
+  const res = NextResponse.json({
+    ref: result.ref,
+    dealerPhone: result.dealerPhone,
+    billing: result.billing,
+  });
+  try {
+    res.cookies.set(PHONE_VERIFY_COOKIE, signPhoneToken(phone, name), {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: PHONE_VERIFY_MAX_AGE_S,
+    });
+  } catch {
+    // PHONE_VERIFY_SECRET not configured — flow still works, just no
+    // frictionless repeat visits until the env var is set.
   }
-
-  return NextResponse.json({ ref, dealerPhone });
+  return res;
 }

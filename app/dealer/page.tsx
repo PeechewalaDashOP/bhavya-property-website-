@@ -196,6 +196,7 @@ export default function DealerPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [walletBalancePaise, setWalletBalancePaise] = useState<number | null>(null);
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -220,6 +221,17 @@ export default function DealerPage() {
   }, [router]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // Wallet balance chip — fetched separately so a slow/missing wallet
+  // endpoint (e.g. pre-migration) never blocks the leads dashboard.
+  useEffect(() => {
+    const token = localStorage.getItem("prop100_dealer_token");
+    if (!token) return;
+    fetch("/api/dealer/wallet", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setWalletBalancePaise(d.balancePaise); })
+      .catch(() => {});
+  }, []);
 
   async function updateStatus(id: number, status: Status) {
     setUpdating(id);
@@ -259,6 +271,14 @@ export default function DealerPage() {
             )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {walletBalancePaise !== null && (
+              <Link
+                href="/dealer/wallet"
+                style={{ background: "rgba(255,255,255,.1)", color: "#fff", fontSize: 13, fontWeight: 800, padding: "7px 12px", borderRadius: 8, textDecoration: "none" }}
+              >
+                💰 ₹{(walletBalancePaise / 100).toLocaleString("en-IN")}
+              </Link>
+            )}
             <Link
               href="/dealer/properties"
               style={{ background: "var(--surface)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "7px 14px", borderRadius: 8, textDecoration: "none", border: "1px solid var(--line)" }}

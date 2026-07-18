@@ -196,24 +196,34 @@ The CHOSEN product to build going forward is THIS folder (kota-next).
 
 ### leads table
 - customer_name
-- customer_phone (verified via OTP)
+- customer_phone (verified via OTP, or via the verified-device cookie — see
+  "Verified-Device Flow" below)
 - property_id (FK to properties)
 - dealer_id (FK to dealers) — denormalized for query speed
 - status: 'new' | 'contacted' | 'closed' | 'dead'
 - source_url — which page the lead came from
 - magic_token — uuid, for magic link actions without login
-- reference_code — format KP-XXXX, auto generated server side
+- reference_code — format P100-XXXX, auto generated server side
 - move_in_date (date, nullable)
 - occupants (integer, nullable)
 - contacted_at (timestamp, nullable)
 - closed_at (timestamp, nullable)
 - created_at (timestamp, auto)
+- billing_status: 'free' | 'charged' | 'pending_balance' | 'waived' (added by
+  supabase/migration_wallet.sql — see "Wallet / Pay-Per-Lead Billing" below)
+- charge_paise (bigint, nullable) — what this lead cost, or would have cost
+  (shadow value while BILLING_ENABLED=false)
+- charged_at (timestamp, nullable) — also doubles as the billing idempotency
+  latch; never bill a lead where this is already set
 
 ### dealers table
 - phone — primary identifier
 - whatsapp_number — may differ from phone number
 - areas_covered (array of area_ids)
 - is_active (boolean, default true)
+- wallet_balance_paise (bigint, default 0) — prepaid balance in paise
+- free_leads_remaining (int, default 5) — evergreen "first 5 free" offer,
+  decrements before any wallet charge
 
 ---
 
@@ -406,6 +416,98 @@ Ref: KP-2047
 - Never send WhatsApp to dealer before lead is saved to DB
 - Never generate reference code client side
 - Never expose magic_token in any UI — backend only
+- Never let a route return `dealerPhone` without going through
+  `lib/leadService.ts::createLead()` — that's the ONLY place dedup + billing
+  are enforced. (A route that hand-rolls a lead insert is how the pre-fix
+  `/api/leads` bug happened — full OTP-gateway bypass via curl.)
+
+---
+
+## Verified-Device Flow (added — kills repeat-OTP friction)
+
+**Problem it solves:** without this, a customer had to OTP-verify on every
+page refresh and for every single property — a 5-property comparison meant
+5 WhatsApp codes. Conversion killer.
+
+**How it works:** after a successful OTP verify, `/api/otp/verify` sets an
+httpOnly, Secure, SameSite=Lax cookie (`p100_pv`, 30 days) signed with the
+same HMAC-SHA256 pattern as the dealer session (`lib/phoneVerifySession.ts`,
+cloned from `lib/dealerSession.ts`). The phone number is never readable by
+client JS and never touches localStorage (CLAUDE.md's own rule) — it only
+exists inside the signed cookie, verified server-side.
+
+- `GET /api/leads/verified` — prefill check only (HMAC verify, no DB hit).
+  Returns `{ verified, phone?, name? }`.
+- `POST /api/leads/verified` — the one-round-trip reveal path. Requires the
+  cookie AND the submitted phone to match `cookie.ph` exactly (typing a
+  different number always forces OTP — this is also how re-verifying a new
+  number rotates the cookie). Capped at 10 leads/phone/24h to bound a stolen
+  cookie's blast radius. On success, calls the same `createLead()` used by
+  the OTP path.
+- Both `components/SiteClient.tsx` and `app/property/[slug]/PropertyDetail.tsx`
+  try this path FIRST; a `401` falls back to the existing `/api/otp/send` →
+  `/api/otp/verify` flow, unchanged.
+
+**Dedup (also lives in `createLead()`):** same phone + same property within
+30 days → the EXISTING lead's ref/dealerPhone is returned, nothing new is
+inserted, the dealer is NOT re-notified, and (once billing is on) the owner
+is NOT re-charged. This is what makes "refresh the page" safe and what keeps
+lead counts honest.
+
+---
+
+## Wallet / Pay-Per-Lead Billing (added — inert until BILLING_ENABLED=true)
+
+**Model:** prepaid wallet per dealer, debited ₹25 (`LEAD_PRICE_PAISE`) per
+revealed lead, via `supabase/migration_wallet.sql`'s `charge_lead` RPC
+(`SELECT ... FOR UPDATE` — serializes concurrent charges so two leads can
+never double-spend one balance; `charged_at` is the idempotency latch).
+Every owner gets `FREE_LEADS_PER_DEALER` (5) free leads before the wallet is
+touched — evergreen, applies to every signup, not just launch.
+
+**Free phase (now):** `BILLING_ENABLED` is unset. Every lead is revealed
+free; `leads.billing_status='waived'` with `charge_paise=LEAD_PRICE_PAISE`
+recorded as a SHADOW value (queryable per-dealer for the month-2 pitch:
+"aapko ₹X ke leads free diye"). **Flip = one Vercel env var
+(`BILLING_ENABLED=true`) + redeploy. No code change.**
+
+**Insufficient balance (billing on):** the lead is NOT revealed — customer
+sees "owner will contact you soon" + a concierge WhatsApp fallback to
+Bhavya (never a dead end); `billing_status='pending_balance'`; the owner
+gets a low-balance WhatsApp with the customer's phone MASKED (never send
+the real number before payment — that's the entire point of charging).
+Pending leads older than 7 days are waived, never billed — an owner is
+never charged for a lead that's gone cold by the time they top up.
+
+**Top-up v1 (manual):** owner pays a UPI QR shown on `/dealer/wallet`, taps
+"I've paid" (WhatsApp to Bhavya), Bhavya credits from `/admin/wallet` via
+the `credit_wallet` RPC. Crediting automatically calls
+`releasePendingLeads()`, which charges any pending leads FIFO and — on
+success — sends the dealer the full lead alert (they only ever saw the
+masked teaser) and sends the customer the owner's contact over WhatsApp.
+Razorpay is a deferred v2; the architecture is a drop-in — a webhook would
+call the same `credit_wallet` + `releasePendingLeads()` pair.
+
+**Files:** `lib/billing.ts` (flags), `lib/leadService.ts` (`createLead`,
+`releasePendingLeads`), `lib/msg91.ts` (shared WhatsApp sender — see below),
+`supabase/migration_wallet.sql` (schema + RPCs — **RPCs are REVOKEd from
+anon/authenticated**, service-role only), `app/api/admin/wallet`,
+`app/api/dealer/wallet`, `app/admin/wallet`, `app/dealer/wallet`.
+
+---
+
+## MSG91 WhatsApp Sends — one shared helper
+
+All WhatsApp template sends (customer OTP, dealer new-lead alert, 15-day
+nudge, low-balance alert, contact-delivery) go through
+`lib/msg91.ts::sendWhatsAppTemplate()`. This is MSG91's OWN payload
+abstraction (`to_and_components`, with `components` as a named object keyed
+`body_1`/`button_1`/etc) — NOT Meta's raw Cloud API `components` array. The
+authoritative reference for any template's exact field names is MSG91's
+dashboard → WhatsApp → Templates → the `<>` "Code {JSON}" icon on that
+template — not generic Meta docs (a prior version of this code guessed from
+Meta docs and MSG91 rejected it: `HTTP 400 "to_and_components received is
+Invalid"`). Never edit the payload shape without checking that sample first.
 
 ---
 
@@ -499,6 +601,19 @@ MSG91_WHATSAPP_NAMESPACE=               # WABA namespace (shared by all template
 MSG91_OTP_TEMPLATE_ID=                  # DEPRECATED — old SMS/DLT template, unread
 MSG91_WHATSAPP_TEMPLATE_ID=             # Dealer new-lead alert template name
 MSG91_WHATSAPP_NUMBER=                  # WhatsApp sender number registered in MSG91
+MSG91_LOW_BALANCE_TEMPLATE_ID=          # Owner low-balance alert (needed at billing flip)
+MSG91_CONTACT_DELIVERY_TEMPLATE_ID=     # Customer contact-delivery on release (billing flip)
+
+# Customer verified-device cookie (separate from DEALER_SESSION_SECRET so
+# rotating one never invalidates the other)
+PHONE_VERIFY_SECRET=                    # server only — openssl rand -hex 32
+
+# Wallet / pay-per-lead billing — flip is BILLING_ENABLED alone, no code change
+BILLING_ENABLED=                        # "true" to charge wallets; unset = free phase
+LEAD_PRICE_PAISE=2500                   # ₹25/lead
+FREE_LEADS_PER_DEALER=5                 # evergreen free-leads-on-signup offer
+NEXT_PUBLIC_UPI_VPA=                    # manual top-up UPI id, e.g. prop100@upi
+NEXT_PUBLIC_CONCIERGE_WHATSAPP=         # Bhavya's WhatsApp — "I've paid" + customer fallback
 
 # App URL (for magic links in dealer WhatsApp)
 NEXT_PUBLIC_APP_URL=                    # e.g. https://kotaproperty.in
@@ -508,6 +623,9 @@ Rules:
 - `NEXT_PUBLIC_*` vars are safe in browser. Everything else is server-only.
 - No Twilio vars anywhere in this project — Twilio is not used.
 - MSG91 auth key must never appear in any client component or `NEXT_PUBLIC_*` var.
+- `charge_lead` / `credit_wallet` are Postgres RPCs REVOKEd from anon —
+  never call them from client code, only from server routes with the
+  service-role client.
 
 ---
 

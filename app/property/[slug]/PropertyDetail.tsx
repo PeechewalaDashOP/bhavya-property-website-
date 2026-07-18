@@ -137,7 +137,19 @@ function LeadSheet({
   const [ref, setRef] = useState("");
 
   useEffect(() => {
-    if (open) { setPhase("form"); setError(""); setOtp(""); }
+    if (open) {
+      setPhase("form"); setError(""); setOtp("");
+      // Verified-device prefill (30-day httpOnly cookie from a prior OTP)
+      fetch("/api/leads/verified")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.verified) {
+            if (d.name) setName(String(d.name));
+            if (d.phone) setPhone(String(d.phone));
+          }
+        })
+        .catch(() => {});
+    }
   }, [open]);
 
   function startCooldown() {
@@ -167,6 +179,40 @@ function LeadSheet({
     setOtp("");
     setPhase("otp");
     startCooldown();
+  }
+
+  // Verified-device fast path: if this browser already OTP-verified this
+  // number (30-day cookie), the lead saves in one round trip — no OTP step.
+  // 401 = cookie missing/expired/different number → normal OTP flow.
+  async function submitContact() {
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (name.trim().length < 2) { setError("Enter your name (at least 2 characters)"); return; }
+    if (cleanPhone.length !== 10) { setError("Enter a valid 10-digit phone number"); return; }
+    setLoading(true);
+    setError("");
+    const res = await fetch("/api/leads/verified", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: cleanPhone,
+        propId: property.id,
+        dealerId: property.dealers?.id ?? null,
+        unitId: selectedUnit?.id ?? null,
+        unitLabel: selectedUnit?.label ?? null,
+        moveInDate: moveIn || null,
+        occupants,
+        intent: "contact",
+        msg: msg.trim() || null,
+      }),
+    });
+    if (res.status === 401) { setLoading(false); await sendOtp(); return; }
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) { setError(data.error ?? "Failed to save. Please try again."); return; }
+    setDealerPhone(data.dealerPhone ?? "");
+    setRef(data.ref ?? "");
+    setPhase("done");
   }
 
   async function submitOtp() {
@@ -307,10 +353,10 @@ function LeadSheet({
 
               <button
                 className={styles.submitBtn}
-                onClick={sendOtp}
+                onClick={submitContact}
                 disabled={loading}
               >
-                {loading ? "Sending…" : "Get Contact Details →"}
+                {loading ? "Please wait…" : "Get Contact Details →"}
               </button>
 
               <p style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
