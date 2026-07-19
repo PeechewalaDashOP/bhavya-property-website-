@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Prop100 — Buy, Rent & Sell Property in Kota",
   description:
-    "Verified houses, flats, plots and rentals across Kota — Talwandi, Vigyan Nagar, Mahaveer Nagar, Dadabadi and more. Direct from trusted dealers, no buyer brokerage.",
+    "Verified houses, flats, plots and rentals across Kota — Talwandi, Vigyan Nagar, Mahaveer Nagar, Dadabadi and more. Direct from trusted dealers, free to browse & contact.",
   keywords: [
     "property in Kota", "flats in Kota", "houses for sale Kota", "rent in Kota",
     "plots in Kota", "Talwandi", "Vigyan Nagar", "real estate Kota Rajasthan"

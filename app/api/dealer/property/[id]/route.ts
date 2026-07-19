@@ -27,6 +27,13 @@ const EDITABLE_FIELDS = [
   "img", "gallery", "videos", "photos", "hostel_meta",
 ] as const;
 
+// Deliberately smaller than EDITABLE_FIELDS and allowed on a wider set of
+// statuses — a live listing shouldn't be reopened for full editing (photos,
+// description, amenities) without re-review, but a price correction on an
+// already-approved listing is common and low-risk enough to allow directly.
+const PRICE_FIELDS = ["price", "rent_per_month", "deposit_amount"] as const;
+const PRICE_EDIT_STATUSES = ["pending", "live", "paused_owner"];
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const s = session(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -83,6 +90,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const fields = (body.fields && typeof body.fields === "object" ? body.fields : {}) as Record<string, unknown>;
     const update: Record<string, unknown> = {};
     for (const key of EDITABLE_FIELDS) {
+      if (key in fields) update[key] = fields[key];
+    }
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+    const { error } = await db.from("properties").update(update).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "edit_price") {
+    if (!PRICE_EDIT_STATUSES.includes(prop.listing_status)) {
+      return NextResponse.json(
+        { error: "Price can't be edited on a rejected or admin-paused listing. Contact Bhavya." },
+        { status: 403 }
+      );
+    }
+    const fields = (body.fields && typeof body.fields === "object" ? body.fields : {}) as Record<string, unknown>;
+    const update: Record<string, unknown> = {};
+    for (const key of PRICE_FIELDS) {
       if (key in fields) update[key] = fields[key];
     }
     if (Object.keys(update).length === 0) {

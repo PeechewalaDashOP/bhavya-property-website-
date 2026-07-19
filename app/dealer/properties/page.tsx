@@ -40,6 +40,11 @@ export default function DealerPropertiesPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [priceEdit, setPriceEdit] = useState<PropRow | null>(null);
+  const [priceInput, setPriceInput] = useState("");
+  const [depositInput, setDepositInput] = useState("");
+  const [priceSaving, setPriceSaving] = useState(false);
+  const [priceErr, setPriceErr] = useState("");
 
   const fetchProps = useCallback(async () => {
     const token = localStorage.getItem("prop100_dealer_token");
@@ -70,6 +75,40 @@ export default function DealerPropertiesPage() {
       alert(d.error || "Something went wrong");
     }
     setActing(null);
+  }
+
+  function openPriceEdit(p: PropRow) {
+    setPriceEdit(p);
+    setPriceInput(String(p.rent_per_month ?? p.price ?? ""));
+    setDepositInput(String(p.deposit_amount ?? ""));
+    setPriceErr("");
+  }
+
+  async function savePrice() {
+    if (!priceEdit) return;
+    const token = localStorage.getItem("prop100_dealer_token");
+    if (!token) return;
+    const amount = Number(priceInput);
+    if (!amount || amount <= 0) { setPriceErr("Enter a valid price"); return; }
+    setPriceSaving(true);
+    setPriceErr("");
+    const fields: Record<string, number> =
+      priceEdit.type === "rent" ? { rent_per_month: amount } : { price: amount };
+    if (priceEdit.type === "rent" && depositInput) fields.deposit_amount = Number(depositInput) || 0;
+    const res = await fetch(`/api/dealer/property/${priceEdit.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: "edit_price", fields }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setPriceSaving(false);
+    if (!res.ok) { setPriceErr(data.error ?? "Failed to update price"); return; }
+    setProps((prev) => prev.map((row) =>
+      row.id === priceEdit.id
+        ? { ...row, ...(priceEdit.type === "rent" ? { rent_per_month: amount, deposit_amount: fields.deposit_amount ?? row.deposit_amount } : { price: amount }) }
+        : row
+    ));
+    setPriceEdit(null);
   }
 
   async function del(id: number, title: string) {
@@ -169,22 +208,47 @@ export default function DealerPropertiesPage() {
                     </>
                   )}
                   {p.listing_status === "live" && (
-                    <button
-                      onClick={() => act(p.id, "pause", `Pause "${p.title}"? It will come off the public site until you resume it.`)}
-                      disabled={acting === p.id}
-                      style={{ flex: 1, background: "var(--bg)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "9px", borderRadius: 8, border: "1px solid var(--line)" }}
-                    >
-                      ⏸️ Pause Listing
-                    </button>
+                    <>
+                      <button
+                        onClick={() => openPriceEdit(p)}
+                        disabled={acting === p.id}
+                        style={{ flex: 1, background: "var(--bg)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "9px", borderRadius: 8, border: "1px solid var(--line)" }}
+                      >
+                        ✎ Edit Price
+                      </button>
+                      <button
+                        onClick={() => act(p.id, "pause", `Pause "${p.title}"? It will come off the public site until you resume it.`)}
+                        disabled={acting === p.id}
+                        style={{ flex: 1, background: "var(--bg)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "9px", borderRadius: 8, border: "1px solid var(--line)" }}
+                      >
+                        ⏸️ Pause Listing
+                      </button>
+                    </>
                   )}
                   {p.listing_status === "paused_owner" && (
-                    <button
-                      onClick={() => act(p.id, "resume", `Resume "${p.title}"? It will go live on the public site again.`)}
-                      disabled={acting === p.id}
-                      style={{ flex: 1, background: "var(--color-primary)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "9px", borderRadius: 8, border: "none" }}
-                    >
-                      ▶ Resume Listing
-                    </button>
+                    <>
+                      <button
+                        onClick={() => openPriceEdit(p)}
+                        disabled={acting === p.id}
+                        style={{ flex: 1, background: "var(--bg)", color: "var(--ink)", fontSize: 13, fontWeight: 700, padding: "9px", borderRadius: 8, border: "1px solid var(--line)" }}
+                      >
+                        ✎ Edit Price
+                      </button>
+                      <button
+                        onClick={() => act(p.id, "resume", `Resume "${p.title}"? It will go live on the public site again.`)}
+                        disabled={acting === p.id}
+                        style={{ flex: 1, background: "var(--color-primary)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "9px", borderRadius: 8, border: "none" }}
+                      >
+                        ▶ Resume Listing
+                      </button>
+                      <button
+                        onClick={() => del(p.id, p.title)}
+                        disabled={acting === p.id}
+                        style={{ flex: "0 0 auto", background: "var(--color-danger-light)", color: "var(--color-danger)", fontSize: 13, fontWeight: 700, padding: "9px 14px", borderRadius: 8, border: "1px solid rgba(220,38,38,0.25)" }}
+                      >
+                        Delete
+                      </button>
+                    </>
                   )}
                   {p.listing_status === "paused_admin" && (
                     <div style={{ flex: 1, fontSize: 12.5, color: "var(--muted)", padding: "9px 0" }}>
@@ -214,6 +278,53 @@ export default function DealerPropertiesPage() {
           })
         )}
       </div>
+
+      {priceEdit && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setPriceEdit(null); }}
+        >
+          <div style={{ background: "var(--surface)", width: "100%", maxWidth: 520, borderRadius: "18px 18px 0 0", padding: "22px 18px calc(env(safe-area-inset-bottom, 16px) + 18px)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 17 }}>Edit Price</div>
+              <button onClick={() => setPriceEdit(null)} style={{ fontSize: 22, color: "var(--muted)" }}>×</button>
+            </div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>{priceEdit.title}</div>
+
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+              {priceEdit.type === "rent" ? "Monthly Rent (₹)" : "Price (₹)"}
+            </label>
+            <input
+              type="number" inputMode="numeric" value={priceInput}
+              onChange={(e) => setPriceInput(e.target.value)}
+              style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", fontSize: 15, marginBottom: 12, boxSizing: "border-box" }}
+            />
+
+            {priceEdit.type === "rent" && (
+              <>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                  Deposit (₹, optional)
+                </label>
+                <input
+                  type="number" inputMode="numeric" value={depositInput}
+                  onChange={(e) => setDepositInput(e.target.value)}
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", fontSize: 15, marginBottom: 12, boxSizing: "border-box" }}
+                />
+              </>
+            )}
+
+            {priceErr && <p style={{ color: "var(--color-danger)", fontSize: 13, marginBottom: 10 }}>{priceErr}</p>}
+
+            <button
+              onClick={savePrice}
+              disabled={priceSaving}
+              style={{ width: "100%", background: "var(--color-primary)", color: "#fff", fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 10, border: "none", opacity: priceSaving ? 0.6 : 1 }}
+            >
+              {priceSaving ? "Saving…" : "Save Price"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

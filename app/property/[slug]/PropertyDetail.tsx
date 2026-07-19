@@ -11,6 +11,7 @@ import {
   TENANT_TYPE_LABELS, gateTimeLabel, noticePeriodLabel, photoCaption,
 } from "@/lib/hostelLabels";
 import Lightbox, { LightboxItem } from "./Lightbox";
+import { CommissionBadge } from "@/components/CommissionBadge";
 import styles from "./styles.module.css";
 
 /* ─── Haversine distance (km) ─────────────────────────────── */
@@ -135,10 +136,11 @@ function LeadSheet({
   const [cooldown, setCooldown] = useState(0);
   const [dealerPhone, setDealerPhone] = useState("");
   const [ref, setRef] = useState("");
+  const [consentChecked, setConsentChecked] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setPhase("form"); setError(""); setOtp("");
+      setPhase("form"); setError(""); setOtp(""); setConsentChecked(false);
       // Verified-device prefill (30-day httpOnly cookie from a prior OTP)
       fetch("/api/leads/verified")
         .then((r) => r.json())
@@ -204,6 +206,7 @@ function LeadSheet({
         occupants,
         intent: "contact",
         msg: msg.trim() || null,
+        consentedToCommission: property.type === "sale" ? consentChecked : null,
       }),
     });
     if (res.status === 401) { setLoading(false); await sendOtp(); return; }
@@ -236,6 +239,7 @@ function LeadSheet({
         occupants,
         intent: "contact",
         msg: msg.trim() || null,
+        consentedToCommission: property.type === "sale" ? consentChecked : null,
       }),
     });
     const data = await res.json();
@@ -272,7 +276,14 @@ function LeadSheet({
     <>
       <div
         className={`${styles.backdrop} ${open ? styles.backdropOpen : ""}`}
-        onClick={onClose}
+        onClick={() => {
+          // The OTP step's content is much shorter than the form step's, so
+          // the sheet shrinks and exposes backdrop where the form used to
+          // be — a stray tap there must not silently discard an OTP already
+          // sent. "← Change phone number" below is the intentional way back.
+          if (phase === "otp") return;
+          onClose();
+        }}
       />
       <div className={`${styles.sheet} ${open ? styles.sheetOpen : ""}`}>
         <div className={styles.sheetHandle} />
@@ -351,16 +362,32 @@ function LeadSheet({
 
               {error && <div className={styles.formError}>{error}</div>}
 
+              {property.type === "sale" && (
+                <label className={styles.consentRow}>
+                  <input
+                    type="checkbox"
+                    checked={consentChecked}
+                    onChange={(e) => setConsentChecked(e.target.checked)}
+                  />
+                  <span>
+                    I understand a buyer commission of <b>only 0.25% of the deal price</b> applies
+                    only if I close this deal — 75% lesser than the market&apos;s standard commission.
+                  </span>
+                </label>
+              )}
+
               <button
                 className={styles.submitBtn}
                 onClick={submitContact}
-                disabled={loading}
+                disabled={loading || (property.type === "sale" && !consentChecked)}
               >
                 {loading ? "Please wait…" : "Get Contact Details →"}
               </button>
 
               <p style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
-                Your details are shared only with this partner — no spam, no brokerage fee.
+                {property.type === "sale"
+                  ? "Your details are shared only with this partner — no spam. Buyer commission applies only on closing, never before."
+                  : "Your details are shared only with this partner — no spam, no brokerage fee."}
               </p>
             </>
           )}
@@ -403,6 +430,12 @@ function LeadSheet({
                   {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Resend OTP"}
                 </button>
               </div>
+              <button
+                onClick={() => { setPhase("form"); setError(""); setOtp(""); }}
+                style={{ display: "block", width: "100%", marginTop: 4, color: "var(--muted)", fontSize: 13, padding: "8px 0", textAlign: "center" }}
+              >
+                ← Change phone number
+              </button>
             </>
           )}
 
@@ -922,6 +955,7 @@ export default function PropertyDetail({
               <span className={styles.typeBadge}>{property.type === "rent" ? "For Rent" : "For Sale"}</span>
               {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified</span>}
               {property.is_featured && <span className={`${styles.badge} ${styles.badgeFeatured}`}>⭐ Featured</span>}
+              {property.type === "sale" && <CommissionBadge />}
             </div>
             {/* Price */}
             <div className={styles.priceLine}>
@@ -1338,7 +1372,9 @@ export default function PropertyDetail({
             </div>
 
             <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, lineHeight: 1.5 }}>
-              Your details are shared only with this dealer — no spam, no brokerage fee.
+              {property.type === "sale"
+                ? "Your details are shared only with this dealer — no spam. Buyer commission: just 0.25% of deal price, only on closing — total 0.75% vs. market's 2% (1%+1%)."
+                : "Your details are shared only with this dealer — no spam, no brokerage fee."}
             </p>
           </div>
         </div>

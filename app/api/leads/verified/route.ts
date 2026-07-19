@@ -82,11 +82,13 @@ export async function POST(req: NextRequest) {
       intent: String(body.intent ?? "").trim() || null,
       msg: String(body.msg ?? "").trim() || null,
       sourceUrl: req.headers.get("referer") ?? null,
+      consentedToCommission: body.consentedToCommission === true,
     });
     return NextResponse.json({
       ref: result.ref,
       dealerPhone: result.dealerPhone,
       billing: result.billing,
+      consentRequired: result.consentRequired ?? false,
     });
   } catch {
     return NextResponse.json({ error: "Failed to save. Please try again." }, { status: 500 });

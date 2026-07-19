@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Area, Locality, PublicDealer, Property } from "@/lib/types";
 import { fmt, capFirst } from "@/lib/format";
+import { CommissionCompareSlider } from "@/components/CommissionBadge";
 
 type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities?: Locality[] };
 type Tab = "sale" | "rent" | "PG" | "Plot" | "Shop";
 const TABS: Tab[] = ["sale", "rent", "PG", "Plot", "Shop"];
-type GateCtx = { kind?: "dealer"; propId?: number; dealerId?: number; title: string; dealerName?: string; price?: number };
+type GateCtx = { kind?: "dealer"; propId?: number; dealerId?: number; title: string; dealerName?: string; price?: number; propType?: "sale" | "rent" };
 type ChatMsg =
   | { who: "bot" | "me"; text: string }
   | { who: "bot"; dealers: PublicDealer[] }
@@ -107,6 +108,8 @@ export default function SiteClient({ properties, dealers, areas, localities = []
   const [otpError, setOtpError] = useState("");
   const [otpAttempts, setOtpAttempts] = useState(0);
   const [resendCooldown, setResendCooldown] = useState(0);
+  // buyer-commission consent — sale listings only
+  const [consentChecked, setConsentChecked] = useState(false);
   // post-OTP reveal: propId → dealer phone (session only — never persisted)
   const [revealPhones, setRevealPhones] = useState<Record<number, string>>({});
   const resendTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -218,7 +221,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     setLeadCtx(ctx2);
     setLdName(""); setLdPhone(""); setLdMoveIn(""); setLdOccupants("1");
     setGatewayStep("form"); setLdOtp(""); setOtpError("");
-    setOtpAttempts(0); setResendCooldown(0);
+    setOtpAttempts(0); setResendCooldown(0); setConsentChecked(false);
     clearInterval(resendTimerRef.current);
     // Verified-device prefill: if this browser OTP-verified in the last 30
     // days (httpOnly cookie), pre-fill name+phone so the reveal is one tap.
@@ -287,6 +290,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           dealerId: leadCtx.dealerId ?? null,
           moveInDate: ldMoveIn || null,
           occupants: parseInt(ldOccupants) || 1,
+          consentedToCommission: leadCtx.propType === "sale" ? consentChecked : null,
         }),
       });
       if (res.status === 401) {
@@ -349,6 +353,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           dealerId: leadCtx.dealerId ?? null,
           moveInDate: ldMoveIn || null,
           occupants: parseInt(ldOccupants) || 1,
+          consentedToCommission: leadCtx.propType === "sale" ? consentChecked : null,
         }),
       });
       const data = await res.json();
@@ -493,7 +498,9 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     <>
       {/* HEADER */}
       <header className="hd"><div className="wrap in">
-        <div className="logo">Prop<b>100</b></div>
+        <div className="logo">
+          <img src="/prop100-logo.png" alt="Prop100 — Rent, Buy, Sell" style={{ height: 38, width: "auto", display: "block" }} />
+        </div>
         <nav>
           <a href="#listings" onClick={() => setTab("sale")}>Buy</a>
           <a href="#listings" onClick={() => setTab("rent")}>Rent</a>
@@ -555,7 +562,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           <span><b>{properties.length}</b> Properties</span>
           <span><b>{localities.length > 0 ? localities.length : areas.length}</b> Areas</span>
           {dealers.length > 0 && <span><b>{dealers.length}</b> Verified Partners</span>}
-          <span><b>₹0</b> Buyer Brokerage</span>
+          <span><b>₹0</b> to Browse &amp; Contact</span>
         </div>
       </div></div>
 
@@ -689,10 +696,13 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         <div className="whygrid">
           <div className="whycard"><div className="ic">🛡️</div><h4>Verified listings</h4><p>Real photos, real prices. No fake posts.</p></div>
           <div className="whycard"><div className="ic">🤝</div><h4>Direct to partner</h4><p>Talk straight to the owner/partner.</p></div>
-          <div className="whycard"><div className="ic">₹</div><h4>No buyer brokerage</h4><p>Browsing and contacting is free.</p></div>
+          <div className="whycard"><div className="ic">₹</div><h4>Free to browse &amp; contact</h4><p>No fee to search, shortlist or talk to a partner.</p></div>
           <div className="whycard"><div className="ic">📱</div><h4>Easy on mobile</h4><p>Fast and simple on any phone.</p></div>
         </div>
       </div></section>
+
+      {/* BUY-SIDE COMMISSION COMPARISON */}
+      <CommissionCompareSlider />
 
       {/* PROCESS */}
       <section id="process"><div className="wrap">
@@ -717,7 +727,6 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             <div className="aboutstats">
               <div><b>{properties.length}+</b><span>Properties</span></div>
               <div><b>{areas.length}</b><span>Areas</span></div>
-              <div><b>500+</b><span>Happy families</span></div>
             </div>
           </div>
         </div>
@@ -757,7 +766,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             <p>🕒 Open: 9 AM – 8 PM (Mon–Sat)</p>
           </div>
         </div>
-        <div className="fbot">© 2026 Prop100 · Built by Bhavya &amp; Team.</div>
+        <div className="fbot">© 2026 Prop100 · Built by Bhavya Galav.</div>
       </div></footer>
 
       {/* PROPERTY MODAL */}
@@ -792,7 +801,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                   ) : (
                     <div className="reveal">
                       <div className="tick">✓ Your number was verified for this property.{unlockRef[modalProp.id] ? ` Reference: ${unlockRef[modalProp.id]}` : ""}</div>
-                      <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price })}>Verify again to get contact</button>
+                      <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price, propType: modalProp.type })}>Verify again to get contact</button>
                       <p className="refnote">Re-verify your number to reveal the partner&apos;s contact.</p>
                     </div>
                   )
@@ -800,7 +809,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                   <div className="lock">
                     <div className="lk">🔒</div><h4>Partner contact is protected</h4>
                     <p>We connect you directly to the partner — no middlemen. Share your details once to unlock the phone &amp; WhatsApp.</p>
-                    <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price })}>Get contact details</button>
+                    <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price, propType: modalProp.type })}>Get contact details</button>
                   </div>
                 )}
               </div>
@@ -828,7 +837,14 @@ export default function SiteClient({ properties, dealers, areas, localities = []
 
       {/* LEAD GATEWAY — step 1: form / step 2: OTP */}
       {leadCtx && (
-        <div className="mask show" onClick={(e) => { if (e.target === e.currentTarget) { setLeadCtx(null); setGatewayStep("form"); } }}>
+        <div className="mask show" onClick={(e) => {
+          // Guard against the shorter OTP-step box exposing backdrop where the
+          // taller form-step box used to be — a stray tap there must not
+          // silently discard an OTP already sent. "← Change phone number"
+          // inside the OTP step is the intentional way back instead.
+          if (gatewayStep === "otp") return;
+          if (e.target === e.currentTarget) { setLeadCtx(null); setGatewayStep("form"); }
+        }}>
           <div className="modal"><div className="mb lf">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 style={{ fontSize: 20 }}>
@@ -855,10 +871,31 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                     <option value="4">4+ people</option>
                   </select>
                 </div>
-                <button className="btn" onClick={submitContact} disabled={submitting}>
+                {leadCtx.propType === "sale" && (
+                  <label className="consentRow">
+                    <input
+                      type="checkbox"
+                      checked={consentChecked}
+                      onChange={(e) => setConsentChecked(e.target.checked)}
+                    />
+                    <span>
+                      I understand a buyer commission of <b>only 0.25% of the deal price</b> applies
+                      only if I close this deal — 75% lesser than the market&apos;s standard commission.
+                    </span>
+                  </label>
+                )}
+                <button
+                  className="btn"
+                  onClick={submitContact}
+                  disabled={submitting || (leadCtx.propType === "sale" && !consentChecked)}
+                >
                   {submitting ? "Saving…" : "Get contact details →"}
                 </button>
-                <p className="refnote">🔒 Your details are shared only with this partner — no spam, no brokerage fee.</p>
+                <p className="refnote">
+                  {leadCtx.propType === "sale"
+                    ? "🔒 Your details are shared only with this partner — no spam. Buyer commission applies only on closing, never before."
+                    : "🔒 Your details are shared only with this partner — no spam, no brokerage fee."}
+                </p>
               </>
             ) : (
               <>

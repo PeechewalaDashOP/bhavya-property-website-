@@ -47,6 +47,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 Leads
               </Link>
               <Link
+                href="/admin/inquiries"
+                style={{
+                  color: pathname === "/admin/inquiries" ? "#fff" : "#7a8fa3",
+                  fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 6,
+                  background: pathname === "/admin/inquiries" ? "rgba(255,255,255,.12)" : "transparent",
+                  textDecoration: "none", transition: "all 0.15s",
+                }}
+              >
+                Inquiries
+              </Link>
+              <Link
                 href="/admin/properties"
                 style={{
                   color: pathname === "/admin/properties" ? "#fff" : "#7a8fa3",
@@ -78,6 +89,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 }}
               >
                 Wallets
+              </Link>
+              <Link
+                href="/admin/sale-deals"
+                style={{
+                  color: pathname === "/admin/sale-deals" ? "#fff" : "#7a8fa3",
+                  fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 6,
+                  background: pathname === "/admin/sale-deals" ? "rgba(255,255,255,.12)" : "transparent",
+                  textDecoration: "none", transition: "all 0.15s",
+                }}
+              >
+                Sale Deals
               </Link>
             </div>
           </div>

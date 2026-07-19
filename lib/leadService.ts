@@ -21,6 +21,7 @@ export type CreateLeadInput = {
   intent?: string | null;
   msg?: string | null;
   sourceUrl: string | null;
+  consentedToCommission?: boolean | null; // sale listings only — buyer commission disclosure
 };
 
 export type CreateLeadResult = {
@@ -28,6 +29,7 @@ export type CreateLeadResult = {
   dealerPhone: string | null; // null when billing outcome is "pending"
   dedup: boolean;             // true = existing lead returned, nothing inserted
   billing: "revealed" | "pending";
+  consentRequired?: boolean;  // true when "pending" is specifically for missing sale consent
 };
 
 const DEDUP_DAYS = 30;
@@ -159,14 +161,18 @@ export async function createLead(
 ): Promise<CreateLeadResult> {
   // 1. Resolve dealer server-side. Never trust a client-supplied dealerId when
   //    a property is involved — the client's copy can be stale or forged.
+  //    Also resolve the property's type here — it's what decides whether the
+  //    buyer-commission consent gate applies at all (sale-only).
   let dealerId = input.dealerId;
+  let propType: "sale" | "rent" | null = null;
   if (input.propId) {
     const { data: propRow } = await db
       .from("properties")
-      .select("dealer_id")
+      .select("dealer_id, type")
       .eq("id", input.propId)
       .maybeSingle();
     dealerId = propRow?.dealer_id ?? null;
+    propType = propRow?.type ?? null;
   }
 
   // 2. Dedup — the double-charge / refresh shield.
@@ -177,7 +183,7 @@ export async function createLead(
   ).toISOString();
   let dedupQuery = db
     .from("leads")
-    .select("reference_code, dealer_id, billing_status")
+    .select("reference_code, dealer_id, billing_status, commission_consent")
     .eq("customer_phone", input.phone)
     .gt("created_at", dedupCutoff)
     .order("created_at", { ascending: false })
@@ -199,7 +205,24 @@ export async function createLead(
   }
 
   if (existing) {
-    const pending = existing.billing_status === "pending_balance";
+    const walletPending = existing.billing_status === "pending_balance";
+    const consentGivenNow = propType === "sale" && input.consentedToCommission === true;
+    const consentPending = propType === "sale" && !existing.commission_consent && !consentGivenNow;
+    const pending = walletPending || consentPending;
+
+    // Consent given on a repeat visit (withheld the first time) — record it
+    // now so a third visit doesn't ask again.
+    if (consentGivenNow && !existing.commission_consent) {
+      try {
+        await db
+          .from("leads")
+          .update({ commission_consent: true, commission_consent_at: new Date().toISOString() })
+          .eq("reference_code", existing.reference_code);
+      } catch {
+        /* pre-migration deploy window — ignore */
+      }
+    }
+
     let dealerPhone: string | null = null;
     if (!pending && existing.dealer_id) {
       dealerPhone = (await getDealerContact(db, existing.dealer_id)).phone;
@@ -209,6 +232,7 @@ export async function createLead(
       dealerPhone,
       dedup: true,
       billing: pending ? "pending" : "revealed",
+      consentRequired: consentPending || undefined,
     };
   }
 
@@ -246,9 +270,46 @@ export async function createLead(
     throw new Error("Failed to save lead");
   }
 
+  // 3b. Sale-only side effects — commission consent + the sale_deals row.
+  //     Both best-effort/fail-open (like the charge_paise write below): a
+  //     lagging migration must never break lead creation.
+  if (propType === "sale") {
+    try {
+      await db
+        .from("leads")
+        .update({
+          commission_consent: input.consentedToCommission === true,
+          commission_consent_at: input.consentedToCommission === true ? new Date().toISOString() : null,
+        })
+        .eq("id", inserted.id);
+    } catch {
+      /* pre-migration deploy window — ignore */
+    }
+    if (dealerId) {
+      try {
+        await db.from("sale_deals").insert({
+          lead_id: inserted.id,
+          property_id: input.propId,
+          dealer_id: dealerId,
+          buyer_name: input.name,
+          buyer_phone: input.phone,
+          status: "interested",
+        });
+      } catch {
+        /* pre-migration deploy window — ignore */
+      }
+    }
+  }
+
   // 4. Billing.
+  //    Sale/buy leads never touch the rental wallet — they carry their own
+  //    closing-time commission (lib/commission.ts) computed later by admin
+  //    from the sale_deals row. Here we only soft-block reveal when consent
+  //    hasn't been given yet — never trust the client checkbox alone.
   let billing: "revealed" | "pending" = "revealed";
-  if (dealerId && BILLING_ENABLED) {
+  if (propType === "sale") {
+    if (input.consentedToCommission !== true) billing = "pending";
+  } else if (dealerId && BILLING_ENABLED) {
     const { data: outcome, error: rpcError } = await db.rpc("charge_lead", {
       p_dealer_id: dealerId,
       p_lead_id: inserted.id,
@@ -292,7 +353,10 @@ export async function createLead(
           magicToken: inserted.magic_token ?? null,
         });
       }
-    } else if (contact.whatsapp) {
+    } else if (propType !== "sale" && contact.whatsapp) {
+      // Wallet-insufficient-balance nudge — rent leads only. A sale lead
+      // pending on missing consent doesn't need a top-up message; admin
+      // follows up manually via /admin/sale-deals instead.
       const { count } = await db
         .from("leads")
         .select("id", { count: "exact", head: true })
@@ -306,7 +370,13 @@ export async function createLead(
     }
   }
 
-  return { ref, dealerPhone, dedup: false, billing };
+  return {
+    ref,
+    dealerPhone,
+    dedup: false,
+    billing,
+    consentRequired: propType === "sale" && billing === "pending" ? true : undefined,
+  };
 }
 
 /* Release pending leads after a wallet credit — FIFO, oldest first. Leads

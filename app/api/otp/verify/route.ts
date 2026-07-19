@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
   const occupants = body.occupants ? Number(body.occupants) : null;
   const intent = String(body.intent ?? "").trim() || null;
   const msg = String(body.msg ?? "").trim() || null;
+  const consentedToCommission = body.consentedToCommission === true;
 
   if (phone.length !== 10) {
     return NextResponse.json({ error: "Invalid phone number" }, { status: 400 });
@@ -127,6 +128,7 @@ export async function POST(req: NextRequest) {
       intent,
       msg,
       sourceUrl: req.headers.get("referer") ?? null,
+      consentedToCommission,
     });
   } catch {
     return NextResponse.json(
@@ -142,6 +144,7 @@ export async function POST(req: NextRequest) {
     ref: result.ref,
     dealerPhone: result.dealerPhone,
     billing: result.billing,
+    consentRequired: result.consentRequired ?? false,
   });
   try {
     res.cookies.set(PHONE_VERIFY_COOKIE, signPhoneToken(phone, name), {

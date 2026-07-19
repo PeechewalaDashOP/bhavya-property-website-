@@ -12,23 +12,22 @@ function serviceDb() {
   );
 }
 
+/* General enquiries only (footer form) — no property/dealer attached.
+   Property leads live separately at /api/admin/leads. Same leads table,
+   same status lifecycle, just the opposite property_id filter. */
 export async function GET(req: NextRequest) {
   if (!await assertAdminFromRequest(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Property leads only — general footer enquiries (no property attached)
-  // live separately at /admin/inquiries so the two never get mixed up.
   const { data, error } = await serviceDb()
     .from("leads")
     .select(`
       id, reference_code, customer_name, customer_phone,
       status, move_in_date, occupants, msg, intent,
-      created_at, contacted_at, closed_at,
-      properties(title, loc),
-      dealers(name)
+      created_at, contacted_at, closed_at
     `)
-    .not("property_id", "is", null)
+    .is("property_id", null)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -56,7 +55,12 @@ export async function PATCH(req: NextRequest) {
   if (status === "contacted") update.contacted_at = now;
   if (status === "closed") { update.contacted_at = now; update.closed_at = now; }
 
-  const { error } = await serviceDb().from("leads").update(update).eq("id", id);
+  // Belt-and-braces: only ever touch rows that are actually general enquiries.
+  const { error } = await serviceDb()
+    .from("leads")
+    .update(update)
+    .eq("id", id)
+    .is("property_id", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
