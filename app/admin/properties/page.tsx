@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { LoadingBar } from "@/components/LoadingBar";
@@ -155,7 +155,19 @@ function SkeletonCard() {
   );
 }
 
+// useSearchParams() requires a Suspense boundary in the App Router, or
+// static prerendering of this page fails the production build outright
+// (not just a warning) — Next.js needs a fallback to show while the
+// client-only searchParams-dependent content resolves.
 export default function AdminPropertiesPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>Loading…</div>}>
+      <PropertiesContent />
+    </Suspense>
+  );
+}
+
+function PropertiesContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
