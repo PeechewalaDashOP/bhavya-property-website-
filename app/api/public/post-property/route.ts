@@ -52,6 +52,32 @@ export async function POST(req: NextRequest) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const db = createClient(supaUrl, serviceKey, { auth: { persistSession: false } });
 
+  // Require a recent, real OTP verification for this exact phone number —
+  // without this, anyone could create a dealer account (and a live listing)
+  // under any phone number just by typing it into this form. The client
+  // verifies via /api/public/verify-owner-otp before ever reaching this
+  // call; we re-check server-side rather than trust that happened, and
+  // re-check the CODE'S phone rather than re-verify the code itself (a
+  // single-use OTP can only ever be marked verified once, so this endpoint
+  // reads that prior verification instead of re-consuming it).
+  const { data: recentVerification } = await db
+    .from("otp_verifications")
+    .select("id")
+    .eq("phone", phone)
+    .eq("purpose", "owner_post")
+    .not("verified_at", "is", null)
+    .gt("verified_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
+    .order("verified_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!recentVerification) {
+    return NextResponse.json(
+      { error: "Please verify your phone number first." },
+      { status: 403 }
+    );
+  }
+
   // Find or create a dealer record for this owner
   const { data: existingDealer } = await db
     .from("dealers")

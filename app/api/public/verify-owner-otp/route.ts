@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { createDealerSession, setDealerSessionCookie } from "@/lib/dealerSession";
 
 function hashOtp(otp: string, phone: string): string {
   return crypto.createHash("sha256").update(`${otp}:${phone}`).digest("hex");
 }
 
 type OtpRow = { id: number; otp_hash: string; attempts: number };
-type DealerRow = { id: number; name: string; can_login: boolean };
 
-/* Existing-dealer login only — an unrecognized phone number is rejected,
-   never auto-created here. First-time owner onboarding (which DOES create
-   a dealer row) is a deliberately separate endpoint/purpose
-   (owner_post) so "log in" and "create an account" stay conceptually
-   distinct even though both run through the same OTP mechanism. */
+/* Verify-only — proves the owner controls this phone number before the
+   (potentially slow) photo/video upload starts, so a wrong code never
+   means "re-upload everything." Does NOT create the listing; that still
+   happens in /api/public/post-property, which re-checks for a recent
+   verified row here rather than re-consuming the OTP (a single-use code
+   can only ever be marked verified once). */
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -45,7 +44,7 @@ export async function POST(req: NextRequest) {
     .from("otp_verifications")
     .select("id, otp_hash, attempts")
     .eq("phone", phone)
-    .eq("purpose", "dealer_login")
+    .eq("purpose", "owner_post")
     .is("verified_at", null)
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
@@ -94,27 +93,5 @@ export async function POST(req: NextRequest) {
     .update({ verified_at: new Date().toISOString() })
     .eq("id", otpRow.id);
 
-  const { data: dealer } = await db
-    .from("dealers")
-    .select("id, name, can_login")
-    .or(`phone.eq.${phone},phone.eq.91${phone}`)
-    .maybeSingle() as { data: DealerRow | null };
-
-  if (!dealer) {
-    return NextResponse.json(
-      { error: "This number is not registered as a partner. Contact admin, or use 'Post Property' if you're listing for the first time." },
-      { status: 403 }
-    );
-  }
-  if (!dealer.can_login) {
-    return NextResponse.json(
-      { error: "This account's login has been disabled. Contact admin." },
-      { status: 403 }
-    );
-  }
-
-  const sessionId = await createDealerSession(dealer.id, req.headers.get("user-agent"));
-  const res = NextResponse.json({ dealer: { id: dealer.id, name: dealer.name } });
-  setDealerSessionCookie(res, sessionId);
-  return res;
+  return NextResponse.json({ ok: true });
 }

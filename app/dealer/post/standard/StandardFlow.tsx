@@ -77,12 +77,10 @@ export default function StandardFlow({
   // videos are File objects, not persisted; re-added if the draft is resumed).
   useEffect(() => {
     if (uploading || done) return;
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
     const t = setTimeout(() => {
       fetch("/api/dealer/draft", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ purpose: form.purpose, form_data: form }),
       }).catch(() => {});
     }, 1200);
@@ -154,9 +152,6 @@ export default function StandardFlow({
     setSubmitErr("");
 
     try {
-      const token = localStorage.getItem("prop100_dealer_token");
-      if (!token) throw new Error("Session expired — please go back and re-enter your details.");
-
       const allFiles = [
         ...photos.map((f) => ({ name: f.name, type: f.type, category: "photo" as const })),
         ...videos.map((f) => ({ name: f.name, type: f.type, category: "video" as const })),
@@ -165,7 +160,7 @@ export default function StandardFlow({
       setUploadMsg("Preparing upload...");
       const prepRes = await fetch("/api/dealer/property/prepare-upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files: allFiles }),
       });
       if (!prepRes.ok) {
@@ -195,7 +190,7 @@ export default function StandardFlow({
 
       const res = await fetch("/api/dealer/property", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: form.purpose,
           ptype: form.ptype,

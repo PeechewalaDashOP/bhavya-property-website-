@@ -60,6 +60,10 @@ export async function getData(): Promise<{ properties: Property[]; dealers: Publ
     // - `verifiedDealers` is explicitly scoped to is_active=true — the curated
     //   "Verified Partners" showcase must never include self-listed owners,
     //   even though RLS now lets their row through for their own property.
+    // is_active is PUBLIC VISIBILITY only — it has no bearing on whether a
+    // dealer can log in. That's dealers.can_login (see lib/dealerSession.ts /
+    // supabase/migration_dealer_auth.sql), a deliberately separate flag so
+    // suspending someone's login never unpublishes their listings.
     const [{ data: allDealers }, { data: verifiedDealers }, { data: areas }, { data: props }, localities] = await Promise.all([
       supabase.from("dealers").select("id,name,role,years,rating").order("id"),
       supabase.from("dealers").select("id,name,role,years,rating").eq("is_active", true).order("id"),

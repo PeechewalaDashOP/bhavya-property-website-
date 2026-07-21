@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyDealerToken } from "@/lib/dealerSession";
+import { getDealerSession } from "@/lib/dealerSession";
 import { createClient } from "@supabase/supabase-js";
 
 function slugify(s: string) {
@@ -19,8 +19,7 @@ function makeSlug(ptype: string, bhk: number, loc: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.headers.get("authorization")?.slice(7) ?? "";
-  const session = verifyDealerToken(token);
+  const session = await getDealerSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;

@@ -61,12 +61,10 @@ export default function HostelFlow({
   // videos are File objects, not persisted; re-added if the draft is resumed).
   useEffect(() => {
     if (uploading || done) return;
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
     const t = setTimeout(() => {
       fetch("/api/dealer/draft", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ purpose: "pg", form_data: form }),
       }).catch(() => {});
     }, 1200);
@@ -117,9 +115,6 @@ export default function HostelFlow({
     setSubmitErr("");
 
     try {
-      const token = localStorage.getItem("prop100_dealer_token");
-      if (!token) throw new Error("Session expired — please go back and re-enter your details.");
-
       const photoItems = mediaRef.current;
       const allFiles = [
         ...photoItems.map((m) => ({ name: m.file.name, type: m.file.type, category: "photo" as const })),
@@ -129,7 +124,7 @@ export default function HostelFlow({
       setUploadMsg("Preparing upload...");
       const prepRes = await fetch("/api/dealer/property/prepare-upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files: allFiles }),
       });
       if (!prepRes.ok) {
@@ -202,7 +197,7 @@ export default function HostelFlow({
 
       const res = await fetch("/api/dealer/property", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "rent",
           ptype: form.pgKind,

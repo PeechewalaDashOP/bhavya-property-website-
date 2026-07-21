@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyDealerToken } from "@/lib/dealerSession";
+import { getDealerSession } from "@/lib/dealerSession";
 import { createClient } from "@supabase/supabase-js";
 
 function serviceDb() {
@@ -8,11 +8,6 @@ function serviceDb() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   );
-}
-
-function session(req: NextRequest) {
-  const token = req.headers.get("authorization")?.slice(7) ?? "";
-  return verifyDealerToken(token);
 }
 
 // Fields an owner may edit themselves. Never includes dealer_id, is_approved,
@@ -35,7 +30,7 @@ const PRICE_FIELDS = ["price", "rent_per_month", "deposit_amount"] as const;
 const PRICE_EDIT_STATUSES = ["pending", "live", "paused_owner"];
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const s = session(req);
+  const s = await getDealerSession(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const id = Number(params.id);
@@ -55,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const s = session(req);
+  const s = await getDealerSession(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const id = Number(params.id);
@@ -151,7 +146,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const s = session(req);
+  const s = await getDealerSession(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const id = Number(params.id);

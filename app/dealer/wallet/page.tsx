@@ -53,12 +53,8 @@ export default function DealerWalletPage() {
   const conciergeWa = process.env.NEXT_PUBLIC_CONCIERGE_WHATSAPP || "";
 
   const fetchWallet = useCallback(async () => {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) { router.replace("/dealer/login"); return; }
     setLoading(true);
-    const res = await fetch("/api/dealer/wallet", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/dealer/wallet");
     if (res.status === 401) { router.replace("/dealer/login"); return; }
     if (!res.ok) { setErr("Could not load wallet. Please try again."); setLoading(false); return; }
     setWallet(await res.json());

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { verifyDealerToken } from "@/lib/dealerSession";
+import { getDealerSession } from "@/lib/dealerSession";
 
 const VALID_STATUSES = ["new", "contacted", "closed", "dead"] as const;
 
@@ -12,14 +12,8 @@ function serviceDb() {
   );
 }
 
-function getDealerSession(req: NextRequest) {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  return verifyDealerToken(token);
-}
-
 export async function GET(req: NextRequest) {
-  const session = getDealerSession(req);
+  const session = await getDealerSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const db = serviceDb();
@@ -49,7 +43,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = getDealerSession(req);
+  const session = await getDealerSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;

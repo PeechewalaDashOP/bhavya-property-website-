@@ -51,6 +51,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Enter a valid 10-digit phone number" }, { status: 400 });
   }
 
+  // Which flow this code is for — 'lead' (customer contact reveal, default,
+  // unchanged for existing callers), 'dealer_login', or 'owner_post'. Scoping
+  // by purpose keeps a customer OTP and a dealer-login OTP for the same
+  // phone number from colliding on "the latest unverified row" lookups (a
+  // phone can plausibly be both a customer's and a dealer's number).
+  const VALID_PURPOSES = ["lead", "dealer_login", "owner_post"] as const;
+  const purposeRaw = String(body.purpose ?? "lead");
+  const purpose = (VALID_PURPOSES as readonly string[]).includes(purposeRaw) ? purposeRaw : "lead";
+
   if (!checkIpRateLimit(getClientIp(req))) {
     return NextResponse.json(
       { error: "Too many requests from this network. Please try again in a few minutes." },
@@ -78,11 +87,14 @@ export async function POST(req: NextRequest) {
     .eq("phone", phone)
     .lt("expires_at", new Date().toISOString());
 
-  // 2. Rate limit: max 1 OTP send per phone per 60 seconds
+  // 2. Rate limit: max 1 OTP send per phone+purpose per 60 seconds — scoped
+  // by purpose so a customer lead-verify send doesn't block an immediate
+  // dealer-login send for the same number, or vice versa.
   const { data: recent } = await db
     .from("otp_verifications")
     .select("created_at")
     .eq("phone", phone)
+    .eq("purpose", purpose)
     .is("verified_at", null)
     .gt("created_at", new Date(Date.now() - 60_000).toISOString())
     .order("created_at", { ascending: false })
@@ -108,6 +120,7 @@ export async function POST(req: NextRequest) {
     phone,
     otp_hash,
     expires_at,
+    purpose,
   });
 
   if (insertError) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { verifyDealerToken } from "@/lib/dealerSession";
+import { getDealerSession } from "@/lib/dealerSession";
 
 function serviceDb() {
   return createClient(
@@ -11,8 +11,7 @@ function serviceDb() {
 }
 
 export async function GET(req: NextRequest) {
-  const token = req.headers.get("authorization")?.replace("Bearer ", "");
-  const payload = token ? verifyDealerToken(token) : null;
+  const payload = await getDealerSession(req);
   if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const db = serviceDb();

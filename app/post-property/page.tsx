@@ -69,6 +69,16 @@ export default function PostPropertyPublicPage() {
   const photoRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
+  // Owner phone verification — required before a dealer account (and the
+  // listing itself) can be created, so anyone can't just type in any
+  // phone number and claim it. Verified before uploads start, so a wrong
+  // code never means "re-upload every photo and video."
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
   function set<K extends keyof Form>(k: K, v: Form[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -124,7 +134,17 @@ export default function PostPropertyPublicPage() {
     return true;
   }
 
-  async function handleSubmit() {
+  function startCooldown() {
+    setCooldown(60);
+    const t = setInterval(() => {
+      setCooldown((c) => {
+        if (c <= 1) { clearInterval(t); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+  }
+
+  async function sendOtp() {
     const e: Record<string, string> = {};
     if (!form.ownerName.trim()) e.ownerName = "Enter your name";
     if (!form.ownerPhone.trim() || !/^\d{10}$/.test(form.ownerPhone.trim())) {
@@ -132,6 +152,40 @@ export default function PostPropertyPublicPage() {
     }
     if (Object.keys(e).length) { setErrors(e); return; }
 
+    setSendingOtp(true);
+    setSubmitErr("");
+    const res = await fetch("/api/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: form.ownerPhone.trim(), purpose: "owner_post" }),
+    });
+    const data = await res.json();
+    setSendingOtp(false);
+    if (!res.ok) { setSubmitErr(data.error ?? "Failed to send OTP. Please try again."); return; }
+    setOtp("");
+    setOtpSent(true);
+    startCooldown();
+  }
+
+  async function verifyOtpAndSave() {
+    const cleanedOtp = otp.replace(/\D/g, "");
+    if (cleanedOtp.length !== 6) { setSubmitErr("Enter the 6-digit OTP"); return; }
+
+    setVerifyingOtp(true);
+    setSubmitErr("");
+    const res = await fetch("/api/public/verify-owner-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: form.ownerPhone.trim(), otp: cleanedOtp }),
+    });
+    const data = await res.json();
+    setVerifyingOtp(false);
+    if (!res.ok) { setSubmitErr(data.error ?? "Incorrect OTP. Please try again."); return; }
+
+    await uploadAndSave();
+  }
+
+  async function uploadAndSave() {
     setUploading(true);
     setUploadPct(0);
     setSubmitErr("");
@@ -615,7 +669,7 @@ export default function PostPropertyPublicPage() {
         )}
 
         {/* ═══════════ STEP 4 — Owner Contact ═══════════ */}
-        {step === 4 && !uploading && (
+        {step === 4 && !uploading && !otpSent && (
           <>
             <div className={styles.section}>
               <div className={styles.sectionTitle}>Your Contact Details</div>
@@ -658,7 +712,7 @@ export default function PostPropertyPublicPage() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>Your number stays private</div>
                   <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
-                    Interested people contact you through Prop100. Your personal number is never shown publicly.
+                    Interested people contact you through Prop100. Your personal number is never shown publicly. We&apos;ll send a WhatsApp code to confirm it&apos;s really yours.
                   </div>
                 </div>
               </div>
@@ -672,10 +726,53 @@ export default function PostPropertyPublicPage() {
 
             <div className={styles.navRow}>
               <button className={styles.btnBack} onClick={() => { setErrors({}); setStep(3); }}>← Back</button>
-              <button className={styles.btnNext} onClick={handleSubmit}>
-                Submit Listing ✓
+              <button className={styles.btnNext} onClick={sendOtp} disabled={sendingOtp}>
+                {sendingOtp ? "Sending…" : "Send OTP →"}
               </button>
             </div>
+          </>
+        )}
+
+        {/* ═══════════ STEP 4b — Verify OTP ═══════════ */}
+        {step === 4 && !uploading && otpSent && (
+          <>
+            <div className={styles.section}>
+              <div className={styles.sectionTitle}>Verify Your Phone</div>
+              <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5, marginBottom: 16 }}>
+                Code sent to <strong style={{ color: "var(--ink)" }}>+91 {form.ownerPhone}</strong> on WhatsApp. Valid for 10 minutes.
+              </p>
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="6-digit OTP"
+                className={styles.input}
+                style={{ letterSpacing: 8, fontSize: 22, textAlign: "center" }}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                autoFocus
+              />
+            </div>
+
+            {submitErr && (
+              <div style={{ background: "var(--color-danger-light)", border: "1px solid rgba(220,38,38,0.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 10, color: "var(--color-danger)", fontSize: 14, lineHeight: 1.4 }}>
+                {submitErr}
+              </div>
+            )}
+
+            <div className={styles.navRow}>
+              <button className={styles.btnBack} onClick={() => { setOtpSent(false); setSubmitErr(""); }}>← Change number</button>
+              <button className={styles.btnNext} onClick={verifyOtpAndSave} disabled={verifyingOtp}>
+                {verifyingOtp ? "Verifying…" : "Verify & Submit ✓"}
+              </button>
+            </div>
+            <button
+              onClick={sendOtp}
+              disabled={sendingOtp || cooldown > 0}
+              style={{ display: "block", width: "100%", marginTop: 10, color: "var(--muted)", fontSize: 13, padding: "8px 0", textAlign: "center" }}
+            >
+              {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Didn't receive it? Resend OTP"}
+            </button>
           </>
         )}
 

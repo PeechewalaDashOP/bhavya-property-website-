@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyDealerToken } from "@/lib/dealerSession";
+import { getDealerSession } from "@/lib/dealerSession";
 import { createClient } from "@supabase/supabase-js";
 
 function serviceDb() {
@@ -10,16 +10,11 @@ function serviceDb() {
   );
 }
 
-function session(req: NextRequest) {
-  const token = req.headers.get("authorization")?.slice(7) ?? "";
-  return verifyDealerToken(token);
-}
-
 // One in-progress "post a property" draft per dealer — lets someone who
 // leaves mid-form pick up where they left off.
 
 export async function GET(req: NextRequest) {
-  const s = session(req);
+  const s = await getDealerSession(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const db = serviceDb();
@@ -34,7 +29,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const s = session(req);
+  const s = await getDealerSession(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: { purpose?: unknown; form_data?: unknown };
@@ -63,7 +58,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const s = session(req);
+  const s = await getDealerSession(req);
   if (!s) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const db = serviceDb();

@@ -47,14 +47,8 @@ export default function DealerAvailabilityPage() {
 
   const fetchProps = useCallback(async () => {
     setLoading(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("prop100_dealer_token") : null;
-    if (!token) { router.replace("/dealer/login"); return; }
-
-    const res = await fetch("/api/dealer/properties", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/dealer/properties");
     if (res.status === 401) {
-      localStorage.removeItem("prop100_dealer_token");
       router.replace("/dealer/login");
       return;
     }
@@ -77,13 +71,10 @@ export default function DealerAvailabilityPage() {
   useEffect(() => { fetchProps(); }, [fetchProps]);
 
   async function saveUnit(unitId: number) {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
-
     setSaving(unitId);
     const res = await fetch("/api/dealer/availability", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ unitId, availableCount: drafts[unitId] ?? 0 }),
     });
     setSaving(null);

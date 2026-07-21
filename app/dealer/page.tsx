@@ -200,15 +200,12 @@ export default function DealerPage() {
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("prop100_dealer_token") : null;
-    if (!token) { router.replace("/dealer/login"); return; }
-
-    const res = await fetch("/api/dealer/leads", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // No client-side token check anymore — the session lives in an httpOnly
+    // cookie the browser sends automatically. If there's no valid session,
+    // the request itself comes back 401 and we redirect from there.
+    const res = await fetch("/api/dealer/leads");
 
     if (res.status === 401) {
-      localStorage.removeItem("prop100_dealer_token");
       router.replace("/dealer/login");
       return;
     }
@@ -225,9 +222,7 @@ export default function DealerPage() {
   // Wallet balance chip — fetched separately so a slow/missing wallet
   // endpoint (e.g. pre-migration) never blocks the leads dashboard.
   useEffect(() => {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
-    fetch("/api/dealer/wallet", { headers: { Authorization: `Bearer ${token}` } })
+    fetch("/api/dealer/wallet")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setWalletBalancePaise(d.balancePaise); })
       .catch(() => {});
@@ -236,18 +231,19 @@ export default function DealerPage() {
   async function updateStatus(id: number, status: Status) {
     setUpdating(id);
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)));
-    const token = localStorage.getItem("prop100_dealer_token");
     const res = await fetch("/api/dealer/leads", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
     if (!res.ok) await fetchLeads();
     setUpdating(null);
   }
 
-  function logout() {
-    localStorage.removeItem("prop100_dealer_token");
+  async function logout() {
+    // Real server-side revocation — not just clearing local state — so a
+    // copied-out cookie value stops working immediately, not just here.
+    await fetch("/api/dealer/logout", { method: "POST" }).catch(() => {});
     router.replace("/dealer/login");
   }
 

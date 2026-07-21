@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { signDealerToken } from "@/lib/dealerSession";
+import crypto from "crypto";
+import { createDealerSession, setDealerSessionCookie } from "@/lib/dealerSession";
 
-// Owner self-post identity capture — name + WhatsApp only, no OTP.
-// Temporary, same tradeoff already accepted in /api/dealer/login/direct:
-// OTP verification will be added once the WhatsApp Business API is approved.
-// Until then, anyone can claim any phone number here — this only grants a
-// dealer session (post/edit their own listings), not access to anyone
-// else's leads or existing data.
+// First-time owner self-post identity — OTP-verified (purpose='owner_post'),
+// then finds-or-creates the dealer row and starts a real session, same as
+// the regular login path. Previously this granted a session for just
+// name+phone with zero proof of ownership; anyone could claim any phone
+// number here.
+
+function hashOtp(otp: string, phone: string): string {
+  return crypto.createHash("sha256").update(`${otp}:${phone}`).digest("hex");
+}
+
+type OtpRow = { id: number; otp_hash: string; attempts: number };
 
 function serviceDb() {
   return createClient(
@@ -18,7 +24,7 @@ function serviceDb() {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { name?: unknown; whatsapp?: unknown };
+  let body: { name?: unknown; whatsapp?: unknown; otp?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -27,13 +33,63 @@ export async function POST(req: NextRequest) {
 
   const name = String(body.name ?? "").trim();
   const phone = String(body.whatsapp ?? "").replace(/\D/g, "").slice(-10);
+  const otp = String(body.otp ?? "").replace(/\D/g, "");
 
   if (!name) return NextResponse.json({ error: "Enter your name" }, { status: 400 });
   if (phone.length !== 10) {
     return NextResponse.json({ error: "Enter a valid 10-digit WhatsApp number" }, { status: 400 });
   }
+  if (otp.length !== 6) {
+    return NextResponse.json({ error: "Enter the 6-digit OTP" }, { status: 400 });
+  }
 
   const db = serviceDb();
+
+  const { data: otpRow } = await db
+    .from("otp_verifications")
+    .select("id, otp_hash, attempts")
+    .eq("phone", phone)
+    .eq("purpose", "owner_post")
+    .is("verified_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle() as { data: OtpRow | null };
+
+  if (!otpRow) {
+    return NextResponse.json(
+      { error: "OTP expired or not found. Please request a new OTP." },
+      { status: 400 }
+    );
+  }
+  if (otpRow.attempts >= 3) {
+    return NextResponse.json({ error: "Too many attempts. Please request a new OTP." }, { status: 429 });
+  }
+
+  const computed = hashOtp(otp, phone);
+  const storedBuf = Buffer.from(otpRow.otp_hash, "hex");
+  const computedBuf = Buffer.from(computed, "hex");
+  const match =
+    storedBuf.length === computedBuf.length &&
+    crypto.timingSafeEqual(storedBuf, computedBuf);
+
+  if (!match) {
+    const newAttempts = otpRow.attempts + 1;
+    await db.from("otp_verifications").update({ attempts: newAttempts }).eq("id", otpRow.id);
+    const rem = 3 - newAttempts;
+    if (rem <= 0) {
+      return NextResponse.json({ error: "Too many attempts. Please request a new OTP." }, { status: 429 });
+    }
+    return NextResponse.json(
+      { error: `Incorrect OTP. ${rem} attempt${rem === 1 ? "" : "s"} remaining.` },
+      { status: 400 }
+    );
+  }
+
+  await db
+    .from("otp_verifications")
+    .update({ verified_at: new Date().toISOString() })
+    .eq("id", otpRow.id);
 
   const { data: existing } = await db
     .from("dealers")
@@ -60,16 +116,13 @@ export async function POST(req: NextRequest) {
       years: 0,
       rating: 0,
       is_active: false, // self-listed owner — hidden from the public "partners" list
+      can_login: true,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let token: string;
-  try {
-    token = signDealerToken(dealerId, phone, dealerName);
-  } catch {
-    return NextResponse.json({ error: "Server session config missing" }, { status: 500 });
-  }
-
-  return NextResponse.json({ token, name: dealerName });
+  const sessionId = await createDealerSession(dealerId, req.headers.get("user-agent"));
+  const res = NextResponse.json({ name: dealerName });
+  setDealerSessionCookie(res, sessionId);
+  return res;
 }

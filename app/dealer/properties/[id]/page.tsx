@@ -103,10 +103,8 @@ export default function EditPropertyPage() {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) { router.replace("/dealer/login"); return; }
     setLoading(true);
-    const res = await fetch(`/api/dealer/property/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`/api/dealer/property/${id}`);
     if (res.status === 401) { router.replace("/dealer/login"); return; }
     if (!res.ok) { setErr("Couldn't load this property."); setLoading(false); return; }
     const data: PropDetail = await res.json();
@@ -143,8 +141,6 @@ export default function EditPropertyPage() {
 
   async function save() {
     if (!prop) return;
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) { router.replace("/dealer/login"); return; }
 
     if (keptVideos.length + newVideos.length === 0) {
       setErr("At least 1 video is required.");
@@ -166,7 +162,7 @@ export default function EditPropertyPage() {
         ];
         const prepRes = await fetch("/api/dealer/property/prepare-upload", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ files: allFiles }),
         });
         if (!prepRes.ok) throw new Error("Failed to prepare upload");
@@ -218,7 +214,7 @@ export default function EditPropertyPage() {
 
       const res = await fetch(`/api/dealer/property/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "edit", fields }),
       });
       if (!res.ok) {
@@ -237,12 +233,11 @@ export default function EditPropertyPage() {
   }
 
   async function statusAction(action: "pause" | "resume", confirmMsg: string) {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token || !confirm(confirmMsg)) return;
+    if (!confirm(confirmMsg)) return;
     setSaving(true);
     const res = await fetch(`/api/dealer/property/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
     if (res.ok) await load();
@@ -255,10 +250,9 @@ export default function EditPropertyPage() {
 
   async function del() {
     if (!prop) return;
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token || !confirm(`Delete "${prop.title}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${prop.title}"? This cannot be undone.`)) return;
     setSaving(true);
-    const res = await fetch(`/api/dealer/property/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`/api/dealer/property/${id}`, { method: "DELETE" });
     if (res.ok) router.replace("/dealer/properties");
     else {
       const d = await res.json().catch(() => ({}));

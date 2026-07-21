@@ -47,10 +47,8 @@ export default function DealerPropertiesPage() {
   const [priceErr, setPriceErr] = useState("");
 
   const fetchProps = useCallback(async () => {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) { router.replace("/dealer/login"); return; }
     setLoading(true);
-    const res = await fetch("/api/dealer/properties", { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch("/api/dealer/properties");
     if (res.status === 401) { router.replace("/dealer/login"); return; }
     if (!res.ok) { setErr("Failed to load your properties."); setLoading(false); return; }
     setProps(await res.json());
@@ -60,13 +58,11 @@ export default function DealerPropertiesPage() {
   useEffect(() => { fetchProps(); }, [fetchProps]);
 
   async function act(id: number, action: "pause" | "resume", label: string) {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
     if (!confirm(label)) return;
     setActing(id);
     const res = await fetch(`/api/dealer/property/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
     if (res.ok) await fetchProps();
@@ -86,8 +82,6 @@ export default function DealerPropertiesPage() {
 
   async function savePrice() {
     if (!priceEdit) return;
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
     const amount = Number(priceInput);
     if (!amount || amount <= 0) { setPriceErr("Enter a valid price"); return; }
     setPriceSaving(true);
@@ -97,7 +91,7 @@ export default function DealerPropertiesPage() {
     if (priceEdit.type === "rent" && depositInput) fields.deposit_amount = Number(depositInput) || 0;
     const res = await fetch(`/api/dealer/property/${priceEdit.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "edit_price", fields }),
     });
     const data = await res.json().catch(() => ({}));
@@ -112,13 +106,10 @@ export default function DealerPropertiesPage() {
   }
 
   async function del(id: number, title: string) {
-    const token = localStorage.getItem("prop100_dealer_token");
-    if (!token) return;
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
     setActing(id);
     const res = await fetch(`/api/dealer/property/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) setProps((prev) => prev.filter((p) => p.id !== id));
     else {

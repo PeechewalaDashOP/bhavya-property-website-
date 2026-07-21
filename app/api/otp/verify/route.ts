@@ -54,11 +54,14 @@ export async function POST(req: NextRequest) {
 
   const db = createClient(url, serviceRole, { auth: { persistSession: false } });
 
-  // Look up latest unverified, unexpired OTP row for this phone
+  // Look up latest unverified, unexpired OTP row for this phone — scoped to
+  // purpose='lead' so this never consumes/collides with a dealer-login or
+  // owner-post code requested for the same phone number.
   const { data: otpRow } = await db
     .from("otp_verifications")
     .select("id, otp_hash, attempts")
     .eq("phone", phone)
+    .eq("purpose", "lead")
     .is("verified_at", null)
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
