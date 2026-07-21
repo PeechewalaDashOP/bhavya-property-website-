@@ -102,7 +102,10 @@ export async function POST(req: NextRequest) {
 
   if (!dealer) {
     return NextResponse.json(
-      { error: "This number is not registered as a partner. Contact admin, or use 'Post Property' if you're listing for the first time." },
+      {
+        error: "This number is not registered as a partner.",
+        code: "not_registered",
+      },
       { status: 403 }
     );
   }

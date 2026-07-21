@@ -11,6 +11,7 @@ export default function DealerLoginPage() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notRegistered, setNotRegistered] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
   const inputStyle: React.CSSProperties = {
@@ -66,6 +67,7 @@ export default function DealerLoginPage() {
     }
     setLoading(true);
     setError("");
+    setNotRegistered(false);
     const res = await fetch("/api/dealer/login/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -75,6 +77,7 @@ export default function DealerLoginPage() {
     setLoading(false);
     if (!res.ok) {
       setError(data.error ?? "Verification failed. Please try again.");
+      setNotRegistered(data.code === "not_registered");
       return;
     }
     router.replace("/dealer");
@@ -160,13 +163,32 @@ export default function DealerLoginPage() {
                 maxLength={6}
                 placeholder="6-digit OTP"
                 value={otp}
-                onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+                onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); setNotRegistered(false); }}
                 style={{ ...inputStyle, letterSpacing: 8, fontSize: 22, textAlign: "center" }}
                 autoFocus
                 onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
               />
               {error && (
                 <p style={{ color: "var(--red)", fontSize: 13, textAlign: "center" }}>{error}</p>
+              )}
+              {notRegistered && (
+                <a
+                  href="/post-property"
+                  style={{
+                    display: "block",
+                    textAlign: "center",
+                    background: "var(--bg)",
+                    color: "var(--color-primary)",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    padding: "12px",
+                    borderRadius: 9,
+                    border: "1.5px solid var(--color-primary)",
+                    textDecoration: "none",
+                  }}
+                >
+                  Listing for the first time? Post your property →
+                </a>
               )}
               <button
                 onClick={verifyOtp}
@@ -191,7 +213,7 @@ export default function DealerLoginPage() {
                 {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Didn't receive it? Resend OTP"}
               </button>
               <button
-                onClick={() => { setStep("phone"); setError(""); }}
+                onClick={() => { setStep("phone"); setError(""); setNotRegistered(false); }}
                 disabled={loading}
                 style={{ color: "var(--muted)", fontSize: 13, padding: "4px 0", textAlign: "center" }}
               >
