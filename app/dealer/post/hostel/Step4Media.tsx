@@ -29,6 +29,7 @@ export default function Step4Media({
   onAddVideos,
   onRemoveVideo,
   errors,
+  compressingVideo,
 }: {
   form: HostelForm;
   media: MediaItem[];
@@ -38,6 +39,7 @@ export default function Step4Media({
   onAddVideos: (fl: FileList | null) => void;
   onRemoveVideo: (i: number) => void;
   errors: Record<string, string>;
+  compressingVideo?: boolean;
 }) {
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const videoRef = useRef<HTMLInputElement>(null);
@@ -167,6 +169,11 @@ export default function Step4Media({
           style={{ display: "none" }}
           onChange={(e) => { onAddVideos(e.target.files); e.target.value = ""; }}
         />
+        {compressingVideo && (
+          <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted)", textAlign: "center" }}>
+            Compressing video to save data — this can take a minute for longer clips…
+          </div>
+        )}
         {videoNames.length > 0 && (
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             {videoNames.map((name, i) => (

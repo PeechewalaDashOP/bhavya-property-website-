@@ -7,6 +7,8 @@ import {
   StandardForm, RENT_PTYPES, SALE_PTYPES, needsBhk, needsFloor,
 } from "../types";
 import { compressImages } from "@/lib/imageCompress";
+import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
+import { uploadFileWithRetry } from "@/lib/upload";
 import styles from "../styles.module.css";
 
 type Unit = {
@@ -24,22 +26,6 @@ type Unit = {
 
 function emptyUnit(): Unit {
   return { label: "", capacity: 1, price_per_month: "", deposit_amount: "", total_count: 1, available_count: 1, has_ac: false, has_cooler: false, attached_bath: false, meals_included: false };
-}
-
-function uploadFile(url: string, file: File, onProgress: (p: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable) onProgress(e.loaded / e.total);
-    });
-    xhr.addEventListener("load", () =>
-      xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`))
-    );
-    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.send(file);
-  });
 }
 
 export default function StandardFlow({
@@ -64,6 +50,7 @@ export default function StandardFlow({
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadMsg, setUploadMsg] = useState("");
+  const [compressingVideo, setCompressingVideo] = useState(false);
   const [done, setDone] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitErr, setSubmitErr] = useState("");
@@ -114,12 +101,18 @@ export default function StandardFlow({
     setPhotos((p) => p.filter((_, j) => j !== i));
     setPhotoUrls((u) => u.filter((_, j) => j !== i));
   }
-  function addVideos(fl: FileList | null) {
+  async function addVideos(fl: FileList | null) {
     if (!fl) return;
-    const files = Array.from(fl);
+    const candidates = Array.from(fl);
+    const oversized = candidates.map(validateVideoSize).find(Boolean);
+    if (oversized) { setErrors((e) => ({ ...e, videos: oversized })); return; }
+
+    setErrors((e) => ({ ...e, videos: "" }));
+    setCompressingVideo(true);
+    const files = await compressVideos(candidates);
+    setCompressingVideo(false);
     setVideos((v) => [...v, ...files]);
     setVideoNames((n) => [...n, ...files.map((f) => f.name)]);
-    setErrors((e) => ({ ...e, videos: "" }));
   }
   function removeVideo(i: number) {
     setVideos((v) => v.filter((_, j) => j !== i));
@@ -173,14 +166,28 @@ export default function StandardFlow({
       const videoPaths: string[] = [];
       const allFileObjs = [...photos, ...videos];
 
+      const refreshSignedUrl = async (meta: (typeof allFiles)[number]) => {
+        const r = await fetch("/api/dealer/property/prepare-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files: [meta] }),
+        });
+        if (!r.ok) throw new Error("Could not retry upload — please try again.");
+        const d = await r.json();
+        return d.files[0].signedUrl as string;
+      };
+
       for (let i = 0; i < uploadUrls.length; i++) {
         const { signedUrl, publicUrl } = uploadUrls[i];
         const isPhoto = i < photos.length;
         const num = isPhoto ? i + 1 : i - photos.length + 1;
         setUploadMsg(`Uploading ${isPhoto ? "photo" : "video"} ${num}…`);
-        await uploadFile(signedUrl, allFileObjs[i], (p) => {
-          setUploadPct(((i + p) / uploadUrls.length) * 88);
-        });
+        await uploadFileWithRetry(
+          signedUrl,
+          allFileObjs[i],
+          (p) => setUploadPct(((i + p) / uploadUrls.length) * 88),
+          () => refreshSignedUrl(allFiles[i])
+        );
         if (isPhoto) photoPaths.push(publicUrl);
         else videoPaths.push(publicUrl);
       }
@@ -710,6 +717,11 @@ export default function StandardFlow({
                 style={{ display: "none" }}
                 onChange={(e) => addVideos(e.target.files)}
               />
+              {compressingVideo && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted)", textAlign: "center" }}>
+                  Compressing video to save data — this can take a minute for longer clips…
+                </div>
+              )}
               {videoNames.length > 0 && (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                   {videoNames.map((name, i) => (

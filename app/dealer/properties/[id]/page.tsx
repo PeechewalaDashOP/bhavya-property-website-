@@ -8,6 +8,8 @@ import { COACHING_HUBS, FEATURES_LIST } from "@/lib/constants";
 import { HOUSE_RULES, CORE_SERVICES, COMMON_AMENITIES, NOTICE_PERIODS, GATE_TIMES } from "../../post/types";
 import { HostelMeta } from "@/lib/types";
 import { compressImages } from "@/lib/imageCompress";
+import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
+import { uploadFileWithRetry } from "@/lib/upload";
 
 type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
 
@@ -36,18 +38,6 @@ type PropDetail = {
   img: string | null;
   hostel_meta: HostelMeta | null;
 };
-
-function uploadFile(url: string, file: File, onProgress: (p: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.addEventListener("progress", (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); });
-    xhr.addEventListener("load", () => (xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`))));
-    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.send(file);
-  });
-}
 
 const inputStyle: React.CSSProperties = {
   width: "100%", border: "1px solid var(--line)", borderRadius: 9, padding: "11px 13px",
@@ -101,6 +91,7 @@ export default function EditPropertyPage() {
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
   const [newVideos, setNewVideos] = useState<File[]>([]);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [compressingVideo, setCompressingVideo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -168,9 +159,24 @@ export default function EditPropertyPage() {
         if (!prepRes.ok) throw new Error("Failed to prepare upload");
         const { files: uploadUrls } = await prepRes.json();
         const allFileObjs = [...newPhotos, ...newVideos];
+        const refreshSignedUrl = async (meta: (typeof allFiles)[number]) => {
+          const r = await fetch("/api/dealer/property/prepare-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ files: [meta] }),
+          });
+          if (!r.ok) throw new Error("Could not retry upload — please try again.");
+          const d = await r.json();
+          return d.files[0].signedUrl as string;
+        };
         for (let i = 0; i < uploadUrls.length; i++) {
           const { signedUrl, publicUrl } = uploadUrls[i];
-          await uploadFile(signedUrl, allFileObjs[i], (p) => setUploadPct(((i + p) / uploadUrls.length) * 100));
+          await uploadFileWithRetry(
+            signedUrl,
+            allFileObjs[i],
+            (p) => setUploadPct(((i + p) / uploadUrls.length) * 100),
+            () => refreshSignedUrl(allFiles[i])
+          );
           if (i < newPhotos.length) uploadedPhotoUrls.push(publicUrl);
           else uploadedVideoUrls.push(publicUrl);
         }
@@ -510,8 +516,28 @@ export default function EditPropertyPage() {
           {editable && (
             <label style={{ display: "inline-block", fontSize: 13, fontWeight: 700, color: "var(--color-primary)", cursor: "pointer" }}>
               + Add Video
-              <input type="file" accept="video/*" multiple style={{ display: "none" }} onChange={(e) => setNewVideos((v) => [...v, ...Array.from(e.target.files ?? [])])} />
+              <input
+                type="file"
+                accept="video/*"
+                multiple
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const candidates = Array.from(e.target.files ?? []);
+                  const oversized = candidates.map(validateVideoSize).find(Boolean);
+                  if (oversized) { setErr(oversized); return; }
+                  setErr("");
+                  setCompressingVideo(true);
+                  const files = await compressVideos(candidates);
+                  setCompressingVideo(false);
+                  setNewVideos((v) => [...v, ...files]);
+                }}
+              />
             </label>
+          )}
+          {compressingVideo && (
+            <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted)", textAlign: "center" }}>
+              Compressing video to save data — this can take a minute for longer clips…
+            </div>
           )}
         </div>
 

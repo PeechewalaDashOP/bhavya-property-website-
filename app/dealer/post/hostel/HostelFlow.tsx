@@ -10,23 +10,9 @@ import Step1Core from "./Step1Core";
 import Step2Rooms from "./Step2Rooms";
 import Step3Amenities from "./Step3Amenities";
 import Step4Media, { MediaItem } from "./Step4Media";
+import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
+import { uploadFileWithRetry } from "@/lib/upload";
 import styles from "../styles.module.css";
-
-function uploadFile(url: string, file: File, onProgress: (p: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable) onProgress(e.loaded / e.total);
-    });
-    xhr.addEventListener("load", () =>
-      xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`))
-    );
-    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.send(file);
-  });
-}
 
 const STEP_LABELS = ["Core Details", "Rooms & Rules", "Amenities", "Media & Review"];
 
@@ -51,6 +37,7 @@ export default function HostelFlow({
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadMsg, setUploadMsg] = useState("");
+  const [compressingVideo, setCompressingVideo] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
   const [done, setDone] = useState(false);
 
@@ -80,12 +67,18 @@ export default function HostelFlow({
     });
   }
 
-  function addVideos(fl: FileList | null) {
+  async function addVideos(fl: FileList | null) {
     if (!fl) return;
-    const files = Array.from(fl);
+    const candidates = Array.from(fl);
+    const oversized = candidates.map(validateVideoSize).find(Boolean);
+    if (oversized) { setErrors((e) => ({ ...e, videos: oversized })); return; }
+
+    clearError("videos");
+    setCompressingVideo(true);
+    const files = await compressVideos(candidates);
+    setCompressingVideo(false);
     setVideos((v) => [...v, ...files]);
     setVideoNames((n) => [...n, ...files.map((f) => f.name)]);
-    clearError("videos");
   }
   function removeVideo(i: number) {
     setVideos((v) => v.filter((_, j) => j !== i));
@@ -140,14 +133,28 @@ export default function HostelFlow({
       let coverUrl = "";
       const allFileObjs = [...photoItems.map((m) => m.file), ...videos];
 
+      const refreshSignedUrl = async (meta: (typeof allFiles)[number]) => {
+        const r = await fetch("/api/dealer/property/prepare-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files: [meta] }),
+        });
+        if (!r.ok) throw new Error("Could not retry upload — please try again.");
+        const d = await r.json();
+        return d.files[0].signedUrl as string;
+      };
+
       for (let i = 0; i < uploadUrls.length; i++) {
         const { signedUrl, publicUrl } = uploadUrls[i];
         const isPhoto = i < photoItems.length;
         const num = isPhoto ? i + 1 : i - photoItems.length + 1;
         setUploadMsg(`Uploading ${isPhoto ? "photo" : "video"} ${num}…`);
-        await uploadFile(signedUrl, allFileObjs[i], (p) => {
-          setUploadPct(((i + p) / uploadUrls.length) * 88);
-        });
+        await uploadFileWithRetry(
+          signedUrl,
+          allFileObjs[i],
+          (p) => setUploadPct(((i + p) / uploadUrls.length) * 88),
+          () => refreshSignedUrl(allFiles[i])
+        );
         if (isPhoto) {
           photoPaths.push(publicUrl);
           const item = photoItems[i];
@@ -369,6 +376,7 @@ export default function HostelFlow({
               onAddVideos={addVideos}
               onRemoveVideo={removeVideo}
               errors={errors}
+              compressingVideo={compressingVideo}
             />
             {submitErr && (
               <div style={{ background: "var(--color-danger-light)", border: "1px solid rgba(220,38,38,0.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 10, color: "var(--color-danger)", fontSize: 14, lineHeight: 1.4 }}>
