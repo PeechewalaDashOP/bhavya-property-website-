@@ -750,6 +750,31 @@ export default function PropertyDetail({
 
   const openSheet = useCallback(() => { setSheetOpen(true); }, []);
 
+  /* Concierge handoff — replaces the old openSheet (OTP -> reveal owner
+     number) as the primary CTA action. openSheet/LeadSheet below is left
+     in place but unreached from these buttons; the OTP->reveal flow is
+     superseded, not deleted. Session-gated: an anonymous student is sent
+     to /account to log in, with the intent stashed so /account can
+     resume it straight into WhatsApp after login. */
+  const startConcierge = useCallback(async () => {
+    const sourceUrl = window.location.pathname;
+    const res = await fetch("/api/concierge/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId: property.id, sourceUrl }),
+    });
+    if (res.status === 401) {
+      sessionStorage.setItem(
+        "p100_pending_concierge",
+        JSON.stringify({ propertyId: property.id, sourceUrl })
+      );
+      window.location.href = "/account?next=" + encodeURIComponent(sourceUrl);
+      return;
+    }
+    const data = await res.json();
+    if (data.waLink) window.location.href = data.waLink;
+  }, [property.id]);
+
   const displayPrice = selectedUnit
     ? selectedUnit.price_per_month
     : property.type === "rent"
@@ -763,9 +788,7 @@ export default function PropertyDetail({
   const freshDays = availUnit ? daysSince(availUnit.last_confirmed_at) : null;
 
   const isFull = (availUnit?.available_count ?? -1) === 0;
-  const ctaLabel = selectedUnit
-    ? `Get Contact — ${selectedUnit.label}`
-    : "Get Partner Contact";
+  const ctaLabel = "Get contact details";
 
   // Highlights: top features as icon-chips
   const highlights: { icon: string; label: string }[] = [];
@@ -1281,7 +1304,7 @@ export default function PropertyDetail({
                   </div>
                 </div>
                 {!isFull && (
-                  <button className={styles.dealerCtaBtn} onClick={openSheet}>
+                  <button className={styles.dealerCtaBtn} onClick={startConcierge}>
                     Contact
                   </button>
                 )}
@@ -1358,7 +1381,7 @@ export default function PropertyDetail({
 
             {/* CTA — hidden when full */}
             {!isFull && (
-              <button className={styles.buyCtaBtn} onClick={openSheet}>
+              <button className={styles.buyCtaBtn} onClick={startConcierge}>
                 {ctaLabel}
               </button>
             )}
@@ -1388,7 +1411,7 @@ export default function PropertyDetail({
               <div className={styles.ctaPriceMain}>{fmt(displayPrice)}</div>
               <div className={styles.ctaPriceSub}>{property.type === "rent" ? "per month" : "sale price"}</div>
             </div>
-            <button className={styles.ctaBtn} onClick={openSheet}>
+            <button className={styles.ctaBtn} onClick={startConcierge}>
               {ctaLabel}
             </button>
           </div>

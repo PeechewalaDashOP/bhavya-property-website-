@@ -36,6 +36,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </span>
             <div style={{ display: "flex", gap: 2 }}>
               <Link
+                href="/admin/concierge"
+                style={{
+                  color: pathname === "/admin/concierge" ? "#fff" : "#7a8fa3",
+                  fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 6,
+                  background: pathname === "/admin/concierge" ? "rgba(255,255,255,.12)" : "transparent",
+                  textDecoration: "none", transition: "all 0.15s",
+                }}
+              >
+                Concierge
+              </Link>
+              <Link
                 href="/admin/leads"
                 style={{
                   color: pathname === "/admin/leads" ? "#fff" : "#7a8fa3",

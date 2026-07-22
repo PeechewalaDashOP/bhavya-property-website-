@@ -235,6 +235,29 @@ export default function SiteClient({ properties, dealers, areas, localities = []
       })
       .catch(() => {});
   }
+  /* Concierge handoff — replaces openLead as the primary "get contact"
+     action. openLead/the OTP-reveal modal below is left in place but
+     unreached from these two buttons; that flow is superseded, not
+     deleted. Session-gated: an anonymous visitor is sent to /account to
+     log in, with the intent stashed so /account can resume it straight
+     into WhatsApp after login. */
+  async function startConcierge(propId: number | null, sourceUrl: string) {
+    const res = await fetch("/api/concierge/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId: propId, sourceUrl }),
+    });
+    if (res.status === 401) {
+      try {
+        sessionStorage.setItem("p100_pending_concierge", JSON.stringify({ propertyId: propId, sourceUrl }));
+      } catch {}
+      window.location.href = "/account?next=" + encodeURIComponent(sourceUrl);
+      return;
+    }
+    const data = await res.json();
+    if (data.waLink) window.location.href = data.waLink;
+  }
+
   function startResendCooldown() {
     setResendCooldown(60);
     resendTimerRef.current = setInterval(() => {
@@ -675,7 +698,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                     <div><b>{d.years}</b>Years</div>
                     <div><b>⭐{d.rating}</b>Rating</div>
                   </div>
-                  <button className="cl" onClick={() => dealerLead(d.name, d.id)}>📞 Contact partner</button>
+                  <button className="cl" onClick={() => startConcierge(null, window.location.pathname)}>📞 Get contact details</button>
                 </div>
               ))}
             </div>
@@ -809,7 +832,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                   <div className="lock">
                     <div className="lk">🔒</div><h4>Partner contact is protected</h4>
                     <p>We connect you directly to the partner — no middlemen. Share your details once to unlock the phone &amp; WhatsApp.</p>
-                    <button className="btn" onClick={() => openLead({ propId: modalProp.id, dealerId: modalProp.dealer.id, title: modalProp.title, dealerName: modalProp.dealer.name, price: modalProp.price, propType: modalProp.type })}>Get contact details</button>
+                    <button className="btn" onClick={() => startConcierge(modalProp.id, window.location.pathname)}>Get contact details</button>
                   </div>
                 )}
               </div>
