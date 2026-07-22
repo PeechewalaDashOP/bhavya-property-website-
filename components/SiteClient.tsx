@@ -92,6 +92,16 @@ export default function SiteClient({ properties, dealers, areas, localities = []
   const [leadCtx, setLeadCtx] = useState<GateCtx | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
 
+  // header login state — who's viewing, so the nav can show
+  // "Login / Sign up" vs "My Account" instead of always one or the other
+  const [studentAuth, setStudentAuth] = useState<{ loggedIn: boolean; name: string | null } | null>(null);
+  useEffect(() => {
+    fetch("/api/student/session")
+      .then((r) => (r.ok ? r.json() : { loggedIn: false }))
+      .then((d) => setStudentAuth({ loggedIn: Boolean(d.loggedIn), name: d.name ?? null }))
+      .catch(() => setStudentAuth({ loggedIn: false, name: null }));
+  }, []);
+
   // gateway data
   const [unlock, setUnlock] = useState<Set<number>>(new Set());
   const [unlockRef, setUnlockRef] = useState<Record<number, string>>({});
@@ -532,6 +542,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           <a href="#why">Why Us</a>
           <a href="#about">About</a>
           <a href="#contact">Contact</a>
+          <a href="/account">{studentAuth?.loggedIn ? `👤 ${studentAuth.name || "My Account"}` : "Login / Sign up"}</a>
         </nav>
         <div className="sp" />
         <button className="post" onClick={() => router.push("/dealer/post")}>+ Post Property</button>
@@ -546,6 +557,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         <a href="#process">How It Works</a>
         <a href="#about">About Us</a>
         <a href="#contact">Contact / Enquiry</a>
+        <a href="/account">{studentAuth?.loggedIn ? `👤 ${studentAuth.name || "My Account"}` : "Login / Sign up"}</a>
       </div>
 
       {/* HERO + SEARCH */}

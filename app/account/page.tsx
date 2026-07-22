@@ -206,13 +206,13 @@ export default function AccountPage() {
             <div style={{ fontWeight: 800, fontSize: 22 }}>
               Prop<span style={{ color: "var(--red)" }}>100</span>
             </div>
-            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>My Account</div>
+            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>Login / Sign up</div>
           </div>
 
           {step === "phone" ? (
             <>
               <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
-                Enter your phone number — we&apos;ll send a WhatsApp code to log you in.
+                Enter your phone number — we&apos;ll send a WhatsApp code. New here? This also creates your account, no separate sign up needed.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <input
