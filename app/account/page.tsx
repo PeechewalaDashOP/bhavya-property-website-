@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { LoadingBar } from "@/components/LoadingBar";
 
 type Enquiry = {
@@ -185,13 +186,23 @@ export default function AccountPage() {
         style={{
           minHeight: "100vh",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           background: "var(--bg)",
           padding: 16,
+          gap: 10,
         }}
       >
         <LoadingBar loading={loading} />
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          <Link
+            href="/"
+            style={{ display: "inline-block", color: "var(--muted)", fontSize: 13, fontWeight: 600, marginBottom: 10, textDecoration: "none" }}
+          >
+            ← Back to Prop100
+          </Link>
+        </div>
         <div
           style={{
             background: "var(--surface)",
@@ -277,6 +288,12 @@ export default function AccountPage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", padding: "24px 16px 60px" }}>
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        <Link
+          href="/"
+          style={{ display: "inline-block", color: "var(--muted)", fontSize: 13, fontWeight: 600, marginBottom: 14, textDecoration: "none" }}
+        >
+          ← Back to Prop100
+        </Link>
         <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 20 }}>
           Prop<span style={{ color: "var(--red)" }}>100</span>{" "}
           <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 15 }}>My Account</span>
