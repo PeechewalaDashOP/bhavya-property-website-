@@ -562,12 +562,24 @@ export default function SiteClient({ properties, dealers, areas, localities = []
 
       {/* HERO + SEARCH */}
       <div className="hero" id="home"><div className="wrap">
+        {/* Reuses the site's existing "live" animation pair (labelGlow +
+            pl) already defined in globals.css for .compareLabelUs / .pulse
+            — kept scoped here instead of touching the frozen stylesheet.
+            Respects prefers-reduced-motion, same as the existing usages. */}
+        <style>{`
+          .heroTrustDot .ring{display:none}
+          @media (prefers-reduced-motion: no-preference){
+            .heroTrustBadge{animation:labelGlow 3s ease-in-out infinite}
+            .heroTrustDot .ring{display:block;animation:pl 2.5s ease-out infinite}
+          }
+        `}</style>
         <div style={{ textAlign: "center", marginBottom: 12 }}>
           <span
+            className="heroTrustBadge"
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
+              gap: 8,
               background: "rgba(255,255,255,.15)",
               border: "1px solid rgba(255,255,255,.35)",
               color: "#fff",
@@ -577,7 +589,11 @@ export default function SiteClient({ properties, dealers, areas, localities = []
               borderRadius: 999,
             }}
           >
-            ✓ Trusted by 100+ owners
+            <span className="heroTrustDot" style={{ position: "relative", width: 8, height: 8, flex: "0 0 auto" }}>
+              <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#4ade80" }} />
+              <span className="ring" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "2px solid #4ade80" }} />
+            </span>
+            Trusted by 100+ owners
           </span>
         </div>
         <h1>Find your home in Kota</h1>
