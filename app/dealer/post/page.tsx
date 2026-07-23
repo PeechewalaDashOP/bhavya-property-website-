@@ -167,7 +167,10 @@ export default function PostPropertyPage() {
               <span style={{ fontWeight: 800, fontSize: 16 }}>Prop<span style={{ color: "var(--red)" }}>100</span></span>
               <span style={{ color: "#7a8fa3", fontSize: 13, marginLeft: 8 }}>Post Property</span>
             </div>
-            <button onClick={() => router.back()} style={{ color: "#7a8fa3", fontSize: 13, fontWeight: 600 }}>
+            <button
+              onClick={() => router.replace(hasSession ? "/dealer" : "/")}
+              style={{ color: "#7a8fa3", fontSize: 13, fontWeight: 600 }}
+            >
               Cancel
             </button>
           </div>
