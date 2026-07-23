@@ -561,7 +561,87 @@ export default function SiteClient({ properties, dealers, areas, localities = []
       </div>
 
       {/* HERO + SEARCH */}
-      <div className="hero" id="home"><div className="wrap">
+      <div className="hero" id="home" style={{ position: "relative", overflow: "hidden" }}>
+        {/* Decorative background layer — faint dot-grid + a mix of
+            Rajasthani heritage silhouettes (domes/chhatris, evoking Kota's
+            actual architecture) and modern tower outlines, plus a couple
+            of map-pin marks. Pure inline SVG/CSS (no image requests, no
+            new library) so it costs nothing on a slow connection; kept
+            scoped to this component instead of touching globals.css. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            backgroundImage: "radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
+          }}
+        />
+        <svg
+          aria-hidden="true"
+          style={{ position: "absolute", left: -10, bottom: -6, height: "88%", opacity: 0.55 }}
+          viewBox="0 0 160 150"
+          fill="none"
+        >
+          {/* heritage dome / chhatri */}
+          <path d="M14 150V88H70V150" stroke="rgba(255,255,255,.22)" strokeWidth="1.4" />
+          <path d="M14 88C14 60 30 40 42 40C54 40 70 60 70 88" stroke="rgba(255,255,255,.22)" strokeWidth="1.4" />
+          <circle cx="42" cy="34" r="3.5" stroke="rgba(255,255,255,.22)" strokeWidth="1.4" />
+          <line x1="42" y1="37" x2="42" y2="40" stroke="rgba(255,255,255,.22)" strokeWidth="1.4" />
+          <path d="M26 150V110M58 150V110" stroke="rgba(255,255,255,.16)" strokeWidth="1.2" />
+          {/* small chhatri beside it */}
+          <path d="M84 150V118H112V150" stroke="rgba(255,255,255,.16)" strokeWidth="1.2" />
+          <path d="M84 118C84 104 92 96 98 96C104 96 112 104 112 118" stroke="rgba(255,255,255,.16)" strokeWidth="1.2" />
+          <line x1="98" y1="90" x2="98" y2="96" stroke="rgba(255,255,255,.16)" strokeWidth="1.2" />
+        </svg>
+        <svg
+          aria-hidden="true"
+          style={{ position: "absolute", right: -8, bottom: -6, height: "92%", opacity: 0.5 }}
+          viewBox="0 0 150 170"
+          fill="none"
+        >
+          {/* modern tower with a window grid */}
+          <rect x="70" y="20" width="56" height="150" stroke="rgba(255,255,255,.2)" strokeWidth="1.4" />
+          {Array.from({ length: 7 }).map((_, row) =>
+            Array.from({ length: 3 }).map((_, col) => (
+              <rect
+                key={`${row}-${col}`}
+                x={80 + col * 15}
+                y={32 + row * 18}
+                width="9"
+                height="10"
+                stroke="rgba(255,255,255,.15)"
+                strokeWidth="1"
+              />
+            ))
+          )}
+          {/* shorter neighbour tower */}
+          <rect x="20" y="70" width="40" height="100" stroke="rgba(255,255,255,.14)" strokeWidth="1.2" />
+          <line x1="30" y1="90" x2="30" y2="160" stroke="rgba(255,255,255,.1)" strokeWidth="1" />
+          <line x1="50" y1="90" x2="50" y2="160" stroke="rgba(255,255,255,.1)" strokeWidth="1" />
+        </svg>
+        {[
+          { top: "18%", left: "9%", size: 20 },
+          { top: "14%", right: "13%", size: 16 },
+        ].map((p, i) => (
+          <svg
+            key={i}
+            aria-hidden="true"
+            style={{ position: "absolute", top: p.top, left: p.left, right: p.right, width: p.size, opacity: 0.4 }}
+            viewBox="0 0 24 32"
+            fill="none"
+          >
+            <path
+              d="M12 2C6.5 2 2 6.5 2 12C2 20 12 30 12 30C12 30 22 20 22 12C22 6.5 17.5 2 12 2Z"
+              stroke="#fff"
+              strokeWidth="1.4"
+            />
+            <circle cx="12" cy="12" r="3" stroke="#fff" strokeWidth="1.4" />
+          </svg>
+        ))}
+
+        <div className="wrap" style={{ position: "relative" }}>
         {/* Reuses the site's existing "live" animation pair (labelGlow +
             pl) already defined in globals.css for .compareLabelUs / .pulse
             — kept scoped here instead of touching the frozen stylesheet.
