@@ -562,6 +562,24 @@ export default function SiteClient({ properties, dealers, areas, localities = []
 
       {/* HERO + SEARCH */}
       <div className="hero" id="home"><div className="wrap">
+        <div style={{ textAlign: "center", marginBottom: 12 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "rgba(255,255,255,.15)",
+              border: "1px solid rgba(255,255,255,.35)",
+              color: "#fff",
+              fontSize: 12.5,
+              fontWeight: 700,
+              padding: "6px 14px",
+              borderRadius: 999,
+            }}
+          >
+            ✓ Trusted by 100+ owners
+          </span>
+        </div>
         <h1>Find your home in Kota</h1>
         <p>Verified houses, flats, plots &amp; rentals — direct from trusted partners</p>
         <div className="sbox">
