@@ -17,6 +17,25 @@ type ChatMsg =
 
 const COACH_AREA_IMG = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80";
 
+// The area photos in public/areas/*.jpg are marketing posters — the
+// locality name is baked into the pixels, not CSS text. object-fit:cover
+// alone can't crop it out (the source is wider than the 4:3 card, so
+// object-position's vertical component has zero effect — height already
+// fills the card exactly). Each entry here zooms + re-centers the image via
+// transform so the card shows the actual building instead of the giant
+// name text. Tuned per-photo by eye; a locality with no entry (no usable
+// building region in its source photo — see New Rajeev Gandhi Nagar) falls
+// back to a plain gradient card instead of a blurry, illegible crop.
+const AREA_PHOTO_CROP: Record<string, { originX: string; originY: string; scale: number }> = {
+  "Rajeev Gandhi Nagar": { originX: "50%", originY: "72%", scale: 2.3 },
+  "Talwandi": { originX: "50%", originY: "68%", scale: 2.0 },
+  "Vigyan Nagar": { originX: "50%", originY: "68%", scale: 2.1 },
+  "Mahaveer Nagar": { originX: "50%", originY: "70%", scale: 2.2 },
+  "Indira Vihar": { originX: "50%", originY: "65%", scale: 1.9 },
+  "Jawahar Nagar": { originX: "50%", originY: "70%", scale: 2.2 },
+  "Kunhadi": { originX: "50%", originY: "55%", scale: 1.4 },
+};
+
 // Auto-rotating photo strip for a listing card — images only, never the
 // property's videos. Manual arrow/dot taps stop propagation so they don't
 // also trigger the card's own onClick (navigate to the detail page).
@@ -723,6 +742,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           {(sortedLocalities.length > 0 ? sortedLocalities : areas.map((a) => ({ name: a.name, slug: a.name, status: "live" as const, sort_order: 0, id: a.name, parent_id: null, level: "locality" as const, latitude: null, longitude: null, aliases: [], created_at: "" }))).slice(0, 8).map((l) => {
             const isComingSoon = l.status === "coming_soon";
             const img = areaImageMap[l.name] ?? "";
+            const crop = AREA_PHOTO_CROP[l.name];
             return (
               <div
                 className="areacard"
@@ -730,9 +750,27 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                 onClick={() => sortedLocalities.length > 0 ? router.push(`/kota/${l.slug}`) : goArea(l.name)}
                 style={isComingSoon ? { opacity: 0.55, filter: "grayscale(60%)", cursor: "pointer" } : {}}
               >
-                {img
-                  ? <img src={img} loading="lazy" alt={l.name} />
-                  : <div style={{ width: "100%", height: "100%", background: "#c8d0da" }} />}
+                {img && crop
+                  ? (
+                    <img
+                      src={img}
+                      loading="lazy"
+                      alt={l.name}
+                      style={{
+                        transformOrigin: `${crop.originX} ${crop.originY}`,
+                        transform: `scale(${crop.scale})`,
+                      }}
+                    />
+                  )
+                  : (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background: "linear-gradient(135deg,var(--color-primary),var(--color-primary-hover))",
+                      }}
+                    />
+                  )}
                 <div className="ov">
                   <b style={isComingSoon ? { fontStyle: "italic", color: "#f59e0b" } : {}}>{l.name}</b>
                   <span>{isComingSoon ? "Coming soon" : `${areaCount(l.name)} homes`}</span>
