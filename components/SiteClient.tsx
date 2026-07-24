@@ -586,7 +586,19 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             actual architecture) and modern tower outlines, plus a couple
             of map-pin marks. Pure inline SVG/CSS (no image requests, no
             new library) so it costs nothing on a slow connection; kept
-            scoped to this component instead of touching globals.css. */}
+            scoped to this component instead of touching globals.css.
+            The buildings are hidden below 680px: on a narrow phone the
+            search card is nearly full-width, so a side-anchored building
+            tall enough to read as a building renders WIDER than the
+            viewport itself — almost entirely hidden behind the card,
+            leaving only tiny cut-off slivers peeking out (confirmed via
+            screenshot — this is what looked "weird"). Above 680px there's
+            real margin beside the card for them to read as intended. */}
+        <style>{`
+          @media (max-width: 679px) {
+            .heroBuildingSvg { display: none; }
+          }
+        `}</style>
         <div
           aria-hidden="true"
           style={{
@@ -599,6 +611,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         />
         <svg
           aria-hidden="true"
+          className="heroBuildingSvg"
           style={{ position: "absolute", left: -10, bottom: -6, height: "88%", opacity: 0.55 }}
           viewBox="0 0 160 150"
           fill="none"
@@ -616,6 +629,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         </svg>
         <svg
           aria-hidden="true"
+          className="heroBuildingSvg"
           style={{ position: "absolute", right: -8, bottom: -6, height: "92%", opacity: 0.5 }}
           viewBox="0 0 150 170"
           fill="none"
