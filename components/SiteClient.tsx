@@ -510,12 +510,6 @@ export default function SiteClient({ properties, dealers, areas, localities = []
   const areaCount = (name: string) => properties.filter((p) => p.loc === name).length;
   const dealerCount = (name: string) => properties.filter((p) => p.dealer.name === name).length;
 
-  // Area image lookup — areas table has the photos, localities have status/sort
-  const areaImageMap = useMemo(
-    () => Object.fromEntries(areas.map((a) => [a.name, a.img])),
-    [areas]
-  );
-
   // Sorted localities: live first (by sort_order), then coming_soon (by sort_order)
   const sortedLocalities = useMemo(
     () =>
@@ -722,21 +716,16 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         <div className="areagrid">
           {(sortedLocalities.length > 0 ? sortedLocalities : areas.map((a) => ({ name: a.name, slug: a.name, status: "live" as const, sort_order: 0, id: a.name, parent_id: null, level: "locality" as const, latitude: null, longitude: null, aliases: [], created_at: "" }))).slice(0, 8).map((l) => {
             const isComingSoon = l.status === "coming_soon";
-            const img = areaImageMap[l.name] ?? "";
             return (
               <div
                 className="areacard"
                 key={l.slug ?? l.name}
                 onClick={() => sortedLocalities.length > 0 ? router.push(`/kota/${l.slug}`) : goArea(l.name)}
-                style={isComingSoon ? { opacity: 0.55, filter: "grayscale(60%)", cursor: "pointer" } : {}}
+                style={isComingSoon ? { opacity: 0.6, filter: "grayscale(40%)", cursor: "pointer" } : {}}
               >
-                {img
-                  ? <img src={img} loading="lazy" alt={l.name} />
-                  : <div style={{ width: "100%", height: "100%", background: "#c8d0da" }} />}
-                <div className="ov">
-                  <b style={isComingSoon ? { fontStyle: "italic", color: "#f59e0b" } : {}}>{l.name}</b>
-                  <span>{isComingSoon ? "Coming soon" : `${areaCount(l.name)} homes`}</span>
-                </div>
+                <span className="aicon">📍</span>
+                <b style={isComingSoon ? { fontStyle: "italic" } : {}}>{l.name}</b>
+                <span className="acount">{isComingSoon ? "Coming soon" : `${areaCount(l.name)} homes`}</span>
               </div>
             );
           })}

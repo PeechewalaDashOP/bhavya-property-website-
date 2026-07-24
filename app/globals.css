@@ -111,14 +111,28 @@ section{padding:40px 0}
 .hstats{display:flex;gap:22px;justify-content:center;margin-top:16px;font-size:13px;opacity:.95;flex-wrap:wrap}
 .hstats b{font-weight:800}
 
-/* AREA explore */
+/* AREA explore — clean gradient cards (no photo). The area photos in
+   public/areas/*.jpg are full-size marketing posters with the locality
+   name baked into the pixels; at card size that text is illegible no
+   matter how it's cropped (confirmed: cropping enough of the source to
+   hide the text would require ~3:1 aspect ratio, i.e. a banner strip, not
+   a card). Real un-branded photography can slot back in later without
+   another redesign — this is a deliberate, considered placeholder, not a
+   fallback. */
 .areagrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 @media(min-width:680px){.areagrid{grid-template-columns:repeat(4,1fr)}}
-.areacard{position:relative;border-radius:var(--radius-md);overflow:hidden;aspect-ratio:4/3;box-shadow:var(--shadow-2);cursor:pointer}
-.areacard img{width:100%;height:100%;object-fit:cover;transition:transform var(--duration-slow) var(--ease)}
-.areacard:hover img{transform:scale(1.05)}
-.areacard .ov{position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(15,23,42,.82));display:flex;flex-direction:column;justify-content:flex-end;padding:11px;color:#fff}
-.areacard .ov b{font-size:14px;font-weight:700}.areacard .ov span{font-size:11.5px;opacity:.9}
+.areacard{
+  position:relative;border-radius:var(--radius-md);overflow:hidden;aspect-ratio:4/3;
+  box-shadow:var(--shadow-2);cursor:pointer;
+  background:linear-gradient(135deg,var(--color-primary),var(--color-primary-hover));
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  padding:14px;color:#fff;transition:transform var(--duration-base) var(--ease),box-shadow var(--duration-base) var(--ease);
+}
+.areacard:hover{transform:translateY(-2px);box-shadow:var(--shadow-3)}
+.areacard::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.14) 1px,transparent 1px);background-size:16px 16px;pointer-events:none}
+.areacard .aicon{font-size:24px;margin-bottom:6px;position:relative}
+.areacard b{font-size:14.5px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;position:relative;letter-spacing:-0.2px}
+.areacard .acount{font-size:12px;opacity:.85;margin-top:4px;position:relative;font-weight:500}
 
 /* FILTER + LISTINGS */
 .fbar{padding:4px 0 8px}
