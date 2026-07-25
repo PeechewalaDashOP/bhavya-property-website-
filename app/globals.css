@@ -102,6 +102,7 @@ section{padding:40px 0}
 .tabs{display:flex;border-bottom:1px solid var(--color-border);overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
 .tabs button{flex:0 0 auto;min-width:72px;padding:13px 12px;font-size:13.5px;font-weight:700;color:var(--color-muted);white-space:nowrap;border-bottom:3px solid transparent;transition:color var(--duration-fast) var(--ease),border-color var(--duration-fast) var(--ease)}
 .tabs button.on{color:var(--color-primary);border-bottom-color:var(--color-primary)}
+@media(min-width:680px){.tabs button{flex:1}}
 .sfields{padding:12px;display:flex;flex-direction:column;gap:9px}
 .sfields select{width:100%;border:1px solid var(--color-border);background:var(--color-background);border-radius:var(--radius-sm);padding:13px;font-size:14.5px;color:var(--color-heading);transition:border-color var(--duration-fast) var(--ease)}
 .sfields select:focus{outline:none;border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(var(--color-primary-rgb),.12)}
