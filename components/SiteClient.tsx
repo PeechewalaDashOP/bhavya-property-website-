@@ -988,7 +988,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                     onChange={(e) => setSearchConfig(e.target.value)}
                     disabled={!searchType}
                   >
-                    <option value="">Select Configuration</option>
+                    <option value="">{searchType ? "Select Configuration" : "Pick a type first"}</option>
                     {(RENT_CONFIG_OPTIONS[searchType] ?? []).map(([v, lbl]) => (
                       <option key={v} value={v}>{lbl}</option>
                     ))}
