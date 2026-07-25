@@ -858,54 +858,50 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             ))}
           </div>
           {tab === "newProjects" ? (
-            <div style={{ padding: "26px 0", background: "linear-gradient(135deg,var(--color-primary),var(--color-primary-hover))" }}>
+            <div style={{ padding: "30px 0", background: "linear-gradient(135deg,var(--color-primary),var(--color-primary-hover))" }}>
               <style>{`
                 @keyframes newProjMarquee {
                   from { transform: translateX(0); }
                   to { transform: translateX(-50%); }
                 }
-                .newProjTrack { animation: newProjMarquee 22s linear infinite; }
+                .newProjTrack { animation: newProjMarquee 26s linear infinite; will-change: transform; }
+                @media (hover: hover) {
+                  .newProjMarqueeWrap:hover .newProjTrack { animation-play-state: paused; }
+                }
                 @media (prefers-reduced-motion: reduce) {
                   .newProjTrack { animation: none; }
                 }
               `}</style>
-              <div style={{ overflow: "hidden" }}>
+              <div className="newProjMarqueeWrap" style={{ overflow: "hidden" }}>
                 <div className="newProjTrack" style={{ display: "flex", width: "max-content" }}>
                   {[0, 1].map((rep) => (
                     <div key={rep} style={{ display: "flex", alignItems: "center" }}>
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 18px" }}>
+                      {Array.from({ length: 10 }).map((_, i) => (
+                        <span key={i} style={{ display: "inline-flex", alignItems: "baseline", gap: 12, padding: "0 22px", whiteSpace: "nowrap" }}>
                           <span
                             style={{
                               fontFamily: "'Plus Jakarta Sans', sans-serif",
                               fontWeight: 800,
-                              fontSize: 22,
+                              fontSize: 21,
                               color: "#fff",
-                              letterSpacing: "-0.3px",
-                              whiteSpace: "nowrap",
+                              letterSpacing: "-0.2px",
                             }}
                           >
                             🏗️ New Projects
                           </span>
+                          <span style={{ color: "rgba(255,255,255,.45)", fontSize: 18 }}>•</span>
                           <span
                             style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              background: "rgba(255,255,255,.16)",
-                              border: "1px solid rgba(255,255,255,.4)",
-                              color: "#fff",
-                              fontSize: 13,
+                              fontFamily: "'Caveat', cursive",
                               fontWeight: 700,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
-                              padding: "6px 14px",
-                              borderRadius: 999,
-                              whiteSpace: "nowrap",
+                              fontSize: 30,
+                              color: "#fff",
                             }}
                           >
                             Coming Soon
                           </span>
-                        </div>
+                          <span style={{ color: "rgba(255,255,255,.45)", fontSize: 18 }}>•</span>
+                        </span>
                       ))}
                     </div>
                   ))}
