@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { LoadingBar } from "@/components/LoadingBar";
 import { fmt } from "@/lib/format";
 import { HostelMeta } from "@/lib/types";
+import { TENANT_PREFERENCES } from "@/lib/constants";
 import {
   HOUSE_RULE_LABELS, SERVICE_LABELS, COMMON_AMENITY_LABELS,
   TENANT_TYPE_LABELS, PARKING_TYPE_LABELS, gateTimeLabel, noticePeriodLabel,
@@ -52,6 +53,7 @@ type PropRow = {
   videos: string[] | null;
   gallery: string[] | null;
   features: string[] | null;
+  tenant_preference: string[] | null;
   description: string | null;
   created_at: string;
   hostel_meta: HostelMeta | null;
@@ -193,6 +195,7 @@ function PropertiesContent() {
   const [err, setErr] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string | boolean>>({});
+  const [editTenantPref, setEditTenantPref] = useState<string[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState("");
   const [flashedId, setFlashedId] = useState<number | null>(null);
@@ -317,10 +320,14 @@ function PropertiesContent() {
   function setField(key: string, value: string | boolean) {
     setEditForm((prev) => ({ ...prev, [key]: value }));
   }
+  function toggleEditTenantPref(t: string) {
+    setEditTenantPref((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
 
   function openEdit(p: PropRow) {
     setEditingId(p.id);
     setEditErr("");
+    setEditTenantPref(p.tenant_preference ?? []);
     setEditForm({
       title: p.title ?? "",
       price: String((p.type === "rent" ? p.rent_per_month : p.price) ?? ""),
@@ -367,6 +374,7 @@ function PropertiesContent() {
       wifi_included: !!editForm.wifi_included,
       is_featured: !!editForm.is_featured,
       is_verified: !!editForm.is_verified,
+      tenant_preference: editTenantPref,
     };
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch("/api/admin/properties", {
@@ -780,6 +788,27 @@ function PropertiesContent() {
                               </label>
                             ))}
                           </div>
+                          {p.type === "rent" && (
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Available For</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {TENANT_PREFERENCES.map((t) => (
+                                  <span
+                                    key={t}
+                                    onClick={() => toggleEditTenantPref(t)}
+                                    style={{
+                                      fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                      border: editTenantPref.includes(t) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                      background: editTenantPref.includes(t) ? "rgba(15,118,110,0.08)" : "var(--bg)",
+                                      color: editTenantPref.includes(t) ? "var(--color-primary)" : "var(--muted)",
+                                    }}
+                                  >
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {editErr && <p style={{ color: "var(--color-danger)", fontSize: 13, marginBottom: 10 }}>{editErr}</p>}
                           <div style={{ display: "flex", gap: 10 }}>
                             <button onClick={() => saveEdit(p)} disabled={editSaving} className={styles.btnApprove} style={{ flex: "0 0 auto", padding: "9px 20px" }}>
@@ -818,6 +847,9 @@ function PropertiesContent() {
                             <div><span style={{ color: "var(--muted)" }}>Parking:</span> {p.parking_available ? "Yes" : "No"}</div>
                             <div><span style={{ color: "var(--muted)" }}>WiFi:</span> {p.wifi_included ? "Yes" : "No"}</div>
                             <div><span style={{ color: "var(--muted)" }}>Verified:</span> {p.is_verified ? "✓ Yes" : "No"}</div>
+                            {p.tenant_preference && p.tenant_preference.length > 0 && (
+                              <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Available for:</span> {p.tenant_preference.join(", ")}</div>
+                            )}
                           </div>
                         </div>
                       )}

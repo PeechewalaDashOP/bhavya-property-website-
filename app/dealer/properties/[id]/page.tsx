@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { LoadingBar } from "@/components/LoadingBar";
-import { COACHING_HUBS, FEATURES_LIST } from "@/lib/constants";
+import { COACHING_HUBS, FEATURES_LIST, TENANT_PREFERENCES } from "@/lib/constants";
 import { HOUSE_RULES, CORE_SERVICES, COMMON_AMENITIES, NOTICE_PERIODS, GATE_TIMES } from "../../post/types";
 import { HostelMeta } from "@/lib/types";
 import { compressImages } from "@/lib/imageCompress";
@@ -33,6 +33,7 @@ type PropDetail = {
   available_from: string | null;
   min_stay_months: number | null;
   features: string[] | null;
+  tenant_preference: string[] | null;
   gallery: string[] | null;
   videos: string[] | null;
   img: string | null;
@@ -77,6 +78,7 @@ export default function EditPropertyPage() {
   const [availFrom, setAvailFrom] = useState("");
   const [minStay, setMinStay] = useState("");
   const [features, setFeatures] = useState<string[]>([]);
+  const [tenantPreference, setTenantPreference] = useState<string[]>([]);
 
   const [houseRules, setHouseRules] = useState<string[]>([]);
   const [services, setServices] = useState<string[]>([]);
@@ -112,6 +114,7 @@ export default function EditPropertyPage() {
     setAvailFrom(data.available_from ?? "");
     setMinStay(String(data.min_stay_months ?? ""));
     setFeatures(data.features ?? []);
+    setTenantPreference(data.tenant_preference ?? []);
     setHouseRules(data.hostel_meta?.house_rules ?? []);
     setServices(data.hostel_meta?.services ?? []);
     setCommonAmenities(data.hostel_meta?.common_amenities ?? []);
@@ -199,6 +202,7 @@ export default function EditPropertyPage() {
         available_from: availFrom || null,
         min_stay_months: minStay ? Number(minStay) : null,
         features,
+        tenant_preference: tenantPreference,
         gallery: finalGallery,
         videos: finalVideos,
         img: finalGallery[0] ?? finalVideos[0] ?? null,
@@ -396,6 +400,19 @@ export default function EditPropertyPage() {
               {FEATURES_LIST.map((f) => (
                 <button key={f} disabled={!editable} onClick={() => toggle(features, setFeatures, f)} style={chipStyle(features.includes(f))}>
                   {features.includes(f) ? "✓ " : ""}{f}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!prop.hostel_meta && isRent && (
+          <div style={sectionStyle}>
+            <div style={sectionTitle}>Available For</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {TENANT_PREFERENCES.map((t) => (
+                <button key={t} disabled={!editable} onClick={() => toggle(tenantPreference, setTenantPreference, t)} style={chipStyle(tenantPreference.includes(t))}>
+                  {tenantPreference.includes(t) ? "✓ " : ""}{t}
                 </button>
               ))}
             </div>

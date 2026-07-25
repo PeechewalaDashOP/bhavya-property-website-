@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     available_from, min_stay_months, floor_number, total_floors,
     attached_bathroom, parking_available, wifi_included,
     nearest_coaching_hub, features, description,
-    photoPaths, videoPaths,
+    photoPaths, videoPaths, tenant_preference,
   } = body as Record<string, unknown>;
 
   const name = String(ownerName ?? "").trim();
@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
       wifi_included: Boolean(wifi_included),
       nearest_coaching_hub: hubVal,
       features: Array.isArray(features) ? features : [],
+      tenant_preference: Array.isArray(tenant_preference) ? tenant_preference : [],
       description: description ? String(description) : "",
       img: photoArr[0] ?? videoArr[0] ?? null,
       gallery: photoArr,

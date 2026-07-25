@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LoadingBar } from "@/components/LoadingBar";
-import { COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS } from "@/lib/constants";
+import { COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS, TENANT_PREFERENCES } from "@/lib/constants";
 import {
   StandardForm, RENT_PTYPES, SALE_PTYPES, needsBhk, needsFloor,
 } from "../types";
@@ -121,6 +121,9 @@ export default function StandardFlow({
   function toggleFeature(f: string) {
     set("features", form.features.includes(f) ? form.features.filter((x) => x !== f) : [...form.features, f]);
   }
+  function toggleTenantPref(t: string) {
+    set("tenantPreference", form.tenantPreference.includes(t) ? form.tenantPreference.filter((x) => x !== t) : [...form.tenantPreference, t]);
+  }
 
   function validateStep1() {
     const e: Record<string, string> = {};
@@ -220,6 +223,7 @@ export default function StandardFlow({
           wifi_included: form.wifi,
           nearest_coaching_hub: isRent && form.coachingHub ? form.coachingHub : null,
           features: form.features,
+          tenant_preference: isRent ? form.tenantPreference : [],
           description: form.description,
           photoPaths,
           videoPaths,
@@ -510,6 +514,29 @@ export default function StandardFlow({
                   <option value="">Select coaching…</option>
                   {COACHING_HUBS.map((h) => <option key={h} value={h}>{h}</option>)}
                 </select>
+              </div>
+            )}
+
+            {isRent && (
+              <div className={styles.section}>
+                <div className={styles.sectionTitle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Available For</span>
+                  <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: 12 }}>optional</span>
+                </div>
+                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+                  Who is this suited for? Helps it show up in the right search (e.g. Family Rentals). Leave blank if it suits everyone.
+                </p>
+                <div className={styles.featureChips}>
+                  {TENANT_PREFERENCES.map((t) => (
+                    <button
+                      key={t}
+                      className={`${styles.chip} ${form.tenantPreference.includes(t) ? styles.chipActive : ""}`}
+                      onClick={() => toggleTenantPref(t)}
+                    >
+                      {form.tenantPreference.includes(t) ? "✓ " : ""}{t}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

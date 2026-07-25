@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { KOTA_AREAS, COACHING_HUBS, FEATURES_LIST } from "@/lib/constants";
+import { KOTA_AREAS, COACHING_HUBS, FEATURES_LIST, TENANT_PREFERENCES } from "@/lib/constants";
 import { compressImages } from "@/lib/imageCompress";
 import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
 import { uploadFileWithRetry } from "@/lib/upload";
@@ -83,6 +83,7 @@ export default function AdminNewPropertyPage() {
   const [availFrom, setAvailFrom] = useState("");
   const [minStay, setMinStay] = useState("");
   const [features, setFeatures] = useState<string[]>([]);
+  const [tenantPreference, setTenantPreference] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
@@ -113,6 +114,9 @@ export default function AdminNewPropertyPage() {
 
   function toggleFeature(f: string) {
     setFeatures((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
+  }
+  function toggleTenantPref(t: string) {
+    setTenantPreference((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   }
 
   function updateUnit(id: string, patch: Partial<UnitRow>) {
@@ -156,7 +160,7 @@ export default function AdminNewPropertyPage() {
     setLoc(""); setBhk("1"); setBaths("1"); setPrice(""); setDeposit(""); setSqft("");
     setFurnishing(""); setFloorNum(""); setTotalFloors(""); setParking(false); setWifi(false);
     setAttachedBath(false); setCoachingHub(""); setAvailFrom(""); setMinStay("");
-    setFeatures([]); setDescription(""); setLat(null); setLng(null); setGpsMsg("");
+    setFeatures([]); setTenantPreference([]); setDescription(""); setLat(null); setLng(null); setGpsMsg("");
     setPgName(""); setGenderPreference(""); setMealsIncluded(false); setUnits([emptyUnit()]);
     setPhotos([]); setVideos([]); setVideoErr(""); setDone(null); setErr("");
   }
@@ -263,6 +267,7 @@ export default function AdminNewPropertyPage() {
         wifi_included: wifi,
         nearest_coaching_hub: coachingHub || null,
         features,
+        tenant_preference: purpose === "rent" ? tenantPreference : [],
         description,
         photoPaths,
         videoPaths,
@@ -577,6 +582,28 @@ export default function AdminNewPropertyPage() {
                   }}
                 >
                   {f}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {purpose === "rent" && (
+          <div style={{ marginTop: 14 }}>
+            <span style={labelStyle}>Available For (optional)</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {TENANT_PREFERENCES.map((t) => (
+                <span
+                  key={t}
+                  onClick={() => toggleTenantPref(t)}
+                  style={{
+                    fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                    border: tenantPreference.includes(t) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                    background: tenantPreference.includes(t) ? "rgba(15,118,110,0.08)" : "var(--bg)",
+                    color: tenantPreference.includes(t) ? "var(--color-primary)" : "var(--muted)",
+                  }}
+                >
+                  {t}
                 </span>
               ))}
             </div>

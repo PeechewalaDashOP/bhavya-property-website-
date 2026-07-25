@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     attached_bathroom, parking_available, wifi_included,
     nearest_coaching_hub, features, description,
     photoPaths, videoPaths, units, hostel_meta,
-    lat, lng, owner,
+    lat, lng, owner, tenant_preference,
   } = body as Record<string, unknown>;
 
   if (!type || !ptype || !loc) {
@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
     wifi_included: Boolean(wifi_included),
     nearest_coaching_hub: hubVal,
     features: Array.isArray(features) ? features : [],
+    tenant_preference: Array.isArray(tenant_preference) ? tenant_preference : [],
     description: description ? String(description) : "",
     img: photoArr[0] ?? videoArr[0] ?? null,
     gallery: photoArr,

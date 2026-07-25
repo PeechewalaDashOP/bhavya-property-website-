@@ -18,7 +18,7 @@ const EDITABLE_FIELDS = [
   "price", "rent_per_month", "deposit_amount", "sqft", "furnishing_status",
   "meals_included", "gender_preference", "available_from", "min_stay_months",
   "floor_number", "total_floors", "attached_bathroom", "parking_available",
-  "wifi_included", "nearest_coaching_hub", "features", "description",
+  "wifi_included", "nearest_coaching_hub", "features", "tenant_preference", "description",
   "img", "gallery", "videos", "photos", "hostel_meta",
 ] as const;
 

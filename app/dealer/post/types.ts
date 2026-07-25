@@ -288,6 +288,7 @@ export type StandardForm = {
   attachedBath: boolean;
   coachingHub: string;
   features: string[];
+  tenantPreference: string[];
   description: string;
 };
 
@@ -311,6 +312,7 @@ export function emptyStandardForm(purpose: "rent" | "sale"): StandardForm {
     attachedBath: false,
     coachingHub: "",
     features: [],
+    tenantPreference: [],
     description: "",
   };
 }

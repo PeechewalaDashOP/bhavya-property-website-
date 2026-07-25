@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { LoadingBar } from "@/components/LoadingBar";
-import { KOTA_AREAS, PROPERTY_TYPES, COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS } from "@/lib/constants";
+import { KOTA_AREAS, PROPERTY_TYPES, COACHING_HUBS, FEATURES_LIST, PTYPE_ICONS, TENANT_PREFERENCES } from "@/lib/constants";
 import { compressImages } from "@/lib/imageCompress";
 import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
 import { uploadFileWithRetry } from "@/lib/upload";
@@ -29,6 +29,7 @@ type Form = {
   attachedBath: boolean;
   coachingHub: string;
   features: string[];
+  tenantPreference: string[];
   description: string;
   ownerName: string;
   ownerPhone: string;
@@ -40,7 +41,7 @@ export default function PostPropertyPublicPage() {
     type: "rent", ptype: "Flat", loc: "", bhk: 1, baths: 1,
     price: "", deposit: "", sqft: "", furnishing: "", gender: "any",
     meals: false, availFrom: "", minStay: "", floorNum: "", totalFloors: "",
-    parking: false, wifi: false, attachedBath: false, coachingHub: "", features: [], description: "",
+    parking: false, wifi: false, attachedBath: false, coachingHub: "", features: [], tenantPreference: [], description: "",
     ownerName: "", ownerPhone: "",
   });
   const [photos, setPhotos] = useState<File[]>([]);
@@ -106,6 +107,9 @@ export default function PostPropertyPublicPage() {
   }
   function toggleFeature(f: string) {
     set("features", form.features.includes(f) ? form.features.filter((x) => x !== f) : [...form.features, f]);
+  }
+  function toggleTenantPref(t: string) {
+    set("tenantPreference", form.tenantPreference.includes(t) ? form.tenantPreference.filter((x) => x !== t) : [...form.tenantPreference, t]);
   }
 
   function validateStep1() {
@@ -262,6 +266,7 @@ export default function PostPropertyPublicPage() {
           wifi_included: form.wifi,
           nearest_coaching_hub: isRent && form.coachingHub ? form.coachingHub : null,
           features: form.features,
+          tenant_preference: isRent && !needsGender ? form.tenantPreference : [],
           description: form.description,
           photoPaths,
           videoPaths,
@@ -548,6 +553,29 @@ export default function PostPropertyPublicPage() {
                     </label>
                   </div>
                 )}
+              </div>
+            )}
+
+            {isRent && !needsGender && (
+              <div className={styles.section}>
+                <div className={styles.sectionTitle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Available For</span>
+                  <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: 12 }}>optional</span>
+                </div>
+                <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+                  Who is this suited for? Helps it show up in the right search (e.g. Family Rentals). Leave blank if it suits everyone.
+                </p>
+                <div className={styles.featureChips}>
+                  {TENANT_PREFERENCES.map((t) => (
+                    <button
+                      key={t}
+                      className={`${styles.chip} ${form.tenantPreference.includes(t) ? styles.chipActive : ""}`}
+                      onClick={() => toggleTenantPref(t)}
+                    >
+                      {form.tenantPreference.includes(t) ? "✓ " : ""}{t}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -1,4 +1,5 @@
 import { Area, Dealer, Property } from "./types";
+import { TENANT_PREFERENCES } from "./constants";
 
 // Exact port of the prototype's seeded sample data, so the site renders
 // identically before Supabase is connected. Swap for real data via getData.ts.
@@ -86,6 +87,9 @@ export const PROPS: Property[] = (() => {
       loc: a.n,
       coaching: a.c,
       genderPreference: pt === "PG" || pt === "Hostel" ? ["boys", "girls", "any"][Math.floor(r() * 3)] : null,
+      tenantPreference: isRent && pt !== "PG" && r() < 0.7
+        ? [...TENANT_PREFERENCES].sort(() => r() - 0.5).slice(0, 1 + Math.floor(r() * 2))
+        : null,
       bhk,
       baths: bhk ? 1 + Math.floor(r() * 2) : 0,
       title: `${bhk ? bhk + " BHK " : ""}${pt} in ${a.n}`,

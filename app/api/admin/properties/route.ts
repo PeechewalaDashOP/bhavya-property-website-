@@ -201,7 +201,7 @@ function selectFullRows(db: DbClient): any {
     .from("properties")
     .select(
       "id,title,type,ptype,loc,price,rent_per_month,deposit_amount," +
-      "is_approved,is_featured,is_verified,slug,img,videos,gallery,features," +
+      "is_approved,is_featured,is_verified,slug,img,videos,gallery,features,tenant_preference," +
       "description,created_at,dealer_id,hostel_meta,listing_status," +
       "sqft,furnishing_status,gender_preference,available_from,meals_included," +
       "min_stay_months,floor_number,total_floors,attached_bathroom,parking_available," +
@@ -225,7 +225,7 @@ const ADMIN_EDITABLE_FIELDS = [
   "furnishing_status", "gender_preference", "available_from", "min_stay_months",
   "floor_number", "total_floors", "meals_included", "attached_bathroom",
   "parking_available", "wifi_included", "nearest_coaching_hub", "description",
-  "is_featured", "is_verified",
+  "is_featured", "is_verified", "tenant_preference",
 ] as const;
 
 export async function PATCH(req: NextRequest) {

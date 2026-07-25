@@ -9,6 +9,15 @@ export type PropertyType = typeof PROPERTY_TYPES[number];
 
 export const COACHING_HUBS = ["Allen", "Resonance", "FIITJEE", "Vibrant", "Motion", "Other"] as const;
 
+// "Who this rental suits" — free-form tags on properties.tenant_preference
+// (text[], no DB CHECK constraint). Backs the Rent tab's "Available For"
+// filter and the homepage's curated entry points (Family Rentals, etc).
+// A listing can carry more than one. Adding a new segment later (e.g.
+// "Corporate Lease") is just adding a string here — no migration needed.
+// Rent-type listings only; not used for sale.
+export const TENANT_PREFERENCES = ["Family", "Bachelors", "Working Professional", "Students"] as const;
+export type TenantPreference = typeof TENANT_PREFERENCES[number];
+
 export const FEATURES_LIST = [
   "Car parking", "Lift", "24×7 water", "Power backup", "Park facing",
   "Gated society", "Modular kitchen", "Near school", "CCTV", "Near market",

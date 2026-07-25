@@ -24,6 +24,7 @@ export type Property = {
   loc: string;
   coaching: string | null;
   genderPreference: string | null;
+  tenantPreference: string[] | null;
   bhk: number;
   baths: number;
   title: string;

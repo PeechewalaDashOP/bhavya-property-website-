@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Area, Locality, PublicDealer, Property } from "@/lib/types";
 import { fmt, capFirst } from "@/lib/format";
+import { TENANT_PREFERENCES } from "@/lib/constants";
 import { CommissionCompareSlider } from "@/components/CommissionBadge";
 
 type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities?: Locality[] };
@@ -88,6 +89,28 @@ const COMMERCIAL_BUDGET_OPTIONS: Record<string, [string, string][]> = {
   ],
 };
 
+// Homepage "who are you" shortcuts — a generic, config-driven entry-point
+// system per the Family Rentals research report: each card just opens a
+// tab and optionally pre-sets a filter already wired into the search
+// widget (currently only tenantPreference, on the Rent tab). Adding a
+// future curated entry point (e.g. "Working Professionals") is adding one
+// object here — no new component, no new route, no architecture change.
+type HomeShortcut = {
+  key: string;
+  icon: string;
+  label: string;
+  sub: string;
+  tab: Tab;
+  presetTenantPref?: string;
+};
+const HOME_SHORTCUTS: HomeShortcut[] = [
+  { key: "student", icon: "🎓", label: "Student Accommodation", sub: "PG, hostels & shared rooms", tab: "PG" },
+  { key: "family", icon: "👨‍👩‍👧", label: "Family Rentals", sub: "Flats & houses for families", tab: "rent", presetTenantPref: "Family" },
+  { key: "professional", icon: "💼", label: "Working Professionals", sub: "Rentals near your workplace", tab: "rent", presetTenantPref: "Working Professional" },
+  { key: "commercial", icon: "🏢", label: "Commercial", sub: "Shops, offices & showrooms", tab: "Shop" },
+  { key: "newProjects", icon: "✨", label: "New Projects", sub: "Launching soon in Kota", tab: "newProjects" },
+];
+
 // Auto-rotating photo strip for a listing card — images only, never the
 // property's videos. Manual arrow/dot taps stop propagation so they don't
 // also trigger the card's own onClick (navigate to the detail page).
@@ -162,10 +185,17 @@ export default function SiteClient({ properties, dealers, areas, localities = []
   const [searchFor, setSearchFor] = useState("");
   const [searchSharing, setSearchSharing] = useState("");
   const [searchListingType, setSearchListingType] = useState("");
+  // Rent's "Available For" — also the field the homepage's curated entry
+  // points (Family Rentals, etc) pre-set via goShortcut(). Untagged listings
+  // (tenantPreference null/empty) are always shown regardless of this filter
+  // — see the list useMemo below — so existing inventory never vanishes the
+  // moment this filter ships.
+  const [searchTenantPref, setSearchTenantPref] = useState("");
   const [appliedConfig, setAppliedConfig] = useState("");
   const [appliedFor, setAppliedFor] = useState("");
   const [appliedSharing, setAppliedSharing] = useState("");
   const [appliedListingType, setAppliedListingType] = useState("");
+  const [appliedTenantPref, setAppliedTenantPref] = useState("");
 
   // listing filters
   const [fBhk, setFBhk] = useState("");
@@ -261,6 +291,11 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     setSearchFor("");
     setSearchSharing("");
     setSearchListingType("");
+    // searchTenantPref is deliberately NOT reset here — like searchLoc, its
+    // option list doesn't depend on which tab is active (unlike searchConfig,
+    // which depends on Rent's own searchType), and goShortcut() needs to set
+    // tab + this together in one call without this effect racing it back to
+    // empty on the next render.
   }, [tab]);
   // Rent's Configuration options depend on Property type — if the type
   // changes to one whose option list no longer contains the current
@@ -350,6 +385,12 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     if (tab === "rent" && appliedConfig && (appliedType === "Flat" || appliedType === "House")) {
       l = l.filter((p) => (appliedConfig === "4" ? p.bhk >= 4 : p.bhk === +appliedConfig));
     }
+    // Untagged listings (no tenantPreference set yet) stay visible under
+    // every "Available For" value — an owner not having tagged their
+    // listing yet should never make it silently disappear from a filter.
+    if (tab === "rent" && appliedTenantPref) {
+      l = l.filter((p) => !p.tenantPreference || p.tenantPreference.length === 0 || p.tenantPreference.includes(appliedTenantPref));
+    }
     if (fBhk) l = l.filter((p) => (fBhk === "4" ? p.bhk >= 4 : p.bhk === +fBhk));
     if (fFurn) l = l.filter((p) => p.furnish === fFurn);
     if (cVer) l = l.filter((p) => p.verified);
@@ -358,7 +399,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     if (fSort === "hi") l.sort((a, b) => b.price - a.price);
     if (fSort === "new") l.sort((a, b) => a.postedDays - b.postedDays);
     return l;
-  }, [properties, tab, appliedLoc, appliedType, appliedBud, appliedListingType, appliedFor, appliedConfig, fBhk, fFurn, fSort, cVer, cCoach]);
+  }, [properties, tab, appliedLoc, appliedType, appliedBud, appliedListingType, appliedFor, appliedConfig, appliedTenantPref, fBhk, fFurn, fSort, cVer, cCoach]);
 
   const ctx = (tab === "sale" ? "For sale" : tab === "rent" ? "For rent" : tab === "newProjects" ? "New Projects" : tab) + (appliedLoc ? " in " + appliedLoc : " in Kota") + " —";
   const rem = list.length - shown;
@@ -371,12 +412,21 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     setAppliedFor(searchFor);
     setAppliedSharing(searchSharing);
     setAppliedListingType(searchListingType);
+    setAppliedTenantPref(searchTenantPref);
     scrollToId("listings");
   }
   function goArea(name: string) {
     setTab("sale");
     setAppliedLoc(name);
     setSearchLoc(name);
+    scrollToId("listings");
+  }
+  function goShortcut(s: HomeShortcut) {
+    setTab(s.tab);
+    if (s.presetTenantPref) {
+      setSearchTenantPref(s.presetTenantPref);
+      setAppliedTenantPref(s.presetTenantPref);
+    }
     scrollToId("listings");
   }
 
@@ -943,6 +993,12 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                       <option key={v} value={v}>{lbl}</option>
                     ))}
                   </select>
+                  <select value={searchTenantPref} onChange={(e) => setSearchTenantPref(e.target.value)}>
+                    <option value="">Available For: Any</option>
+                    {TENANT_PREFERENCES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
                 </>
               )}
 
@@ -1010,6 +1066,40 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           <span><b>₹0</b> to Browse &amp; Contact</span>
         </div>
       </div></div>
+
+      {/* HOMEPAGE SHORTCUTS — "who are you" entry points. Each tile just
+          opens a tab (optionally with a filter pre-set); see HOME_SHORTCUTS
+          and goShortcut() above. Not a new module for any of these — Family
+          Rentals in particular is the Rent tab with Available For=Family
+          pre-applied, not a separate listings source. */}
+      <section id="shortcuts"><div className="wrap">
+        <style>{`
+          .shortcutGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+          @media (min-width: 680px) { .shortcutGrid { grid-template-columns: repeat(5, 1fr); } }
+          .shortcutCard {
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            gap: 4px; padding: 20px 12px; border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border); background: var(--color-surface);
+            box-shadow: var(--shadow-1); cursor: pointer;
+            transition: box-shadow var(--duration-base) var(--ease), transform var(--duration-base) var(--ease), border-color var(--duration-base) var(--ease);
+          }
+          .shortcutCard:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); border-color: var(--color-primary); }
+          .shortcutCard .icon { font-size: 28px; line-height: 1; margin-bottom: 4px; }
+          .shortcutCard .lbl { font-size: 14px; font-weight: 700; color: var(--color-heading); }
+          .shortcutCard .sub { font-size: 11.5px; color: var(--color-muted); line-height: 1.4; }
+        `}</style>
+        <h2 className="sec">Find what fits you</h2>
+        <p className="sub">Curated shortcuts into the same verified listings — pick who you are</p>
+        <div className="shortcutGrid">
+          {HOME_SHORTCUTS.map((s) => (
+            <button key={s.key} className="shortcutCard" onClick={() => goShortcut(s)}>
+              <span className="icon">{s.icon}</span>
+              <span className="lbl">{s.label}</span>
+              <span className="sub">{s.sub}</span>
+            </button>
+          ))}
+        </div>
+      </div></section>
 
       {/* EXPLORE AREAS */}
       <section id="areas"><div className="wrap">
