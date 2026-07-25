@@ -413,15 +413,23 @@ function PropertiesContent() {
     <div>
       <LoadingBar loading={loading || acting !== null} />
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800 }}>Properties</h1>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600, padding: "7px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", opacity: loading ? 0.5 : 1 }}
-        >
-          Refresh
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => router.push("/admin/properties/new")}
+            style={{ fontSize: 13, color: "#fff", fontWeight: 700, padding: "7px 14px", border: "none", borderRadius: 8, background: "var(--ok, #16a06a)" }}
+          >
+            + Add Listing
+          </button>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600, padding: "7px 14px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", opacity: loading ? 0.5 : 1 }}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Overview strip */}
