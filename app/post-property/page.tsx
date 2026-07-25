@@ -72,7 +72,7 @@ export default function PostPropertyPublicPage() {
   }
 
   const isRent = form.type === "rent";
-  const needsBHK = !["Shop", "Plot"].includes(form.ptype);
+  const needsBHK = !["Shop", "Plot", "Office", "Showroom", "Warehouse-Godown"].includes(form.ptype);
   const needsGender = ["Hostel", "PG"].includes(form.ptype);
   const needsMeals = ["Hostel", "PG"].includes(form.ptype);
 

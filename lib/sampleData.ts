@@ -85,6 +85,7 @@ export const PROPS: Property[] = (() => {
       ptype: pt,
       loc: a.n,
       coaching: a.c,
+      genderPreference: pt === "PG" || pt === "Hostel" ? ["boys", "girls", "any"][Math.floor(r() * 3)] : null,
       bhk,
       baths: bhk ? 1 + Math.floor(r() * 2) : 0,
       title: `${bhk ? bhk + " BHK " : ""}${pt} in ${a.n}`,

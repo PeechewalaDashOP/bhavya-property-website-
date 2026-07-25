@@ -26,8 +26,8 @@ export const PURPOSES: { key: Purpose; label: string; icon: string; sub: string 
 ];
 
 /* Hostel/PG is NOT in these lists — it has its own purpose. */
-export const RENT_PTYPES = ["Room", "Flat", "House", "Shop"] as const;
-export const SALE_PTYPES = ["Flat", "House", "Shop", "Plot"] as const;
+export const RENT_PTYPES = ["Room", "Flat", "House", "Shop", "Office", "Showroom", "Warehouse-Godown"] as const;
+export const SALE_PTYPES = ["Flat", "House", "Shop", "Plot", "Office", "Showroom", "Warehouse-Godown"] as const;
 
 export const ROOM_CATEGORIES: { key: RoomCategoryKey; label: string; capacity: number }[] = [
   { key: "single", label: "Single",  capacity: 1 },
@@ -328,7 +328,7 @@ export function roomCategoryCapacity(cfg: RoomConfig): number {
 
 /* Does this property type need BHK / bathroom counts? */
 export function needsBhk(ptype: string): boolean {
-  return !["Shop", "Plot"].includes(ptype);
+  return !["Shop", "Plot", "Office", "Showroom", "Warehouse-Godown"].includes(ptype);
 }
 
 /* Does this property type have a floor? */

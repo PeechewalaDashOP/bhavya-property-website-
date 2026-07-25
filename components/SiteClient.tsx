@@ -7,8 +7,8 @@ import { fmt, capFirst } from "@/lib/format";
 import { CommissionCompareSlider } from "@/components/CommissionBadge";
 
 type Props = { properties: Property[]; dealers: PublicDealer[]; areas: Area[]; localities?: Locality[] };
-type Tab = "sale" | "rent" | "PG" | "Plot" | "Shop";
-const TABS: Tab[] = ["sale", "rent", "PG", "Plot", "Shop"];
+type Tab = "sale" | "rent" | "PG" | "newProjects" | "Shop";
+const TABS: Tab[] = ["sale", "rent", "PG", "newProjects", "Shop"];
 type GateCtx = { kind?: "dealer"; propId?: number; dealerId?: number; title: string; dealerName?: string; price?: number; propType?: "sale" | "rent" };
 type ChatMsg =
   | { who: "bot" | "me"; text: string }
@@ -34,6 +34,58 @@ const AREA_PHOTO_CROP: Record<string, { originX: string; originY: string; scale:
   "Indira Vihar": { originX: "50%", originY: "65%", scale: 1.9 },
   "Jawahar Nagar": { originX: "50%", originY: "70%", scale: 2.2 },
   "Kunhadi": { originX: "50%", originY: "55%", scale: 1.4 },
+};
+
+// Any ptype that counts as "Commercial" for the Commercial tab's base
+// membership filter — Property type then narrows within this set.
+const COMMERCIAL_PTYPES = ["Shop", "Office", "Showroom", "Warehouse-Godown"];
+
+// Parses the encoded budget values from budgetOptions()/COMMERCIAL_BUDGET_OPTIONS:
+// a plain number = "under X", a trailing "+" = "X or above", "min-max" = an
+// inclusive range. One parser shared by every tab's budget filter.
+function matchesBudget(price: number, encoded: string): boolean {
+  if (!encoded) return true;
+  if (encoded.endsWith("+")) return price >= Number(encoded.slice(0, -1));
+  if (encoded.includes("-")) {
+    const [min, max] = encoded.split("-").map(Number);
+    return price >= min && price <= max;
+  }
+  return price <= Number(encoded);
+}
+
+// Rent's Configuration options depend on the selected Property type.
+// Room has no matching field on the homepage's Property type yet (see the
+// state-declaration comment above) — its options render for selection but
+// don't narrow the list.
+const RENT_CONFIG_OPTIONS: Record<string, [string, string][]> = {
+  Room: [
+    ["single", "Single Room"],
+    ["double", "Double Room"],
+    ["single-kitchen", "Single Room + Kitchen"],
+    ["double-kitchen", "Double Room + Kitchen"],
+  ],
+  Flat: [["1", "1 BHK"], ["2", "2 BHK"], ["3", "3 BHK"], ["4", "4 BHK+"]],
+  House: [["1", "1 BHK"], ["2", "2 BHK"], ["3", "3 BHK"], ["4", "4 BHK+"]],
+};
+
+// Commercial's Budget scale depends on Listing type — rent is priced
+// per month, sale is a total price, so the two scales can't be merged
+// into one neutral list without being ambiguous.
+const COMMERCIAL_BUDGET_OPTIONS: Record<string, [string, string][]> = {
+  Rent: [
+    ["", "Any Budget"],
+    ["25000", "Under ₹25k/month"],
+    ["50000", "₹25k–50k/month"],
+    ["100000", "₹50k–1L/month"],
+    ["1000000000", "Above ₹1L/month"],
+  ],
+  Sale: [
+    ["", "Any Budget"],
+    ["2500000", "Under ₹25L"],
+    ["5000000", "₹25L–50L"],
+    ["10000000", "₹50L–1Cr"],
+    ["1000000000", "Above ₹1Cr"],
+  ],
 };
 
 // Auto-rotating photo strip for a listing card — images only, never the
@@ -96,7 +148,24 @@ export default function SiteClient({ properties, dealers, areas, localities = []
   const [searchBud, setSearchBud] = useState("");
   const [appliedLoc, setAppliedLoc] = useState("");
   const [appliedType, setAppliedType] = useState("");
-  const [appliedBud, setAppliedBud] = useState(0);
+  const [appliedBud, setAppliedBud] = useState(""); // encoded: "8000" (under), "18000+" (above), "8000-12000" (range)
+
+  // per-tab extra hero search fields — Rent's Configuration, PG's For/Sharing,
+  // Commercial's Listing type. Same search*/applied* pairing as the fields
+  // above; only Rent Configuration (Flat/House, via bhk) and PG For (via
+  // genderPreference) have real backing data today. PG Sharing and Rent
+  // Configuration-for-Room have no matching field on the homepage's
+  // lightweight Property type (property_units-level data isn't fetched here)
+  // — both render fully but are a UI-only no-op filter until that data
+  // exists; flagged, not silently guessed at.
+  const [searchConfig, setSearchConfig] = useState("");
+  const [searchFor, setSearchFor] = useState("");
+  const [searchSharing, setSearchSharing] = useState("");
+  const [searchListingType, setSearchListingType] = useState("");
+  const [appliedConfig, setAppliedConfig] = useState("");
+  const [appliedFor, setAppliedFor] = useState("");
+  const [appliedSharing, setAppliedSharing] = useState("");
+  const [appliedListingType, setAppliedListingType] = useState("");
 
   // listing filters
   const [fBhk, setFBhk] = useState("");
@@ -185,7 +254,23 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     window.history.replaceState(null, "", qs ? `/?${qs}` : "/");
   }, [tab]);
   useEffect(() => setShown(6), [tab, appliedLoc, appliedType, appliedBud, fBhk, fFurn, fSort, cVer, cCoach]);
-  useEffect(() => setSearchBud(""), [tab]);
+  useEffect(() => {
+    setSearchBud("");
+    setSearchType("");
+    setSearchConfig("");
+    setSearchFor("");
+    setSearchSharing("");
+    setSearchListingType("");
+  }, [tab]);
+  // Rent's Configuration options depend on Property type — if the type
+  // changes to one whose option list no longer contains the current
+  // selection, reset it back to the placeholder instead of leaving a
+  // now-invalid value selected.
+  useEffect(() => {
+    if (tab !== "rent") return;
+    const opts = RENT_CONFIG_OPTIONS[searchType] ?? [];
+    if (searchConfig && !opts.some(([v]) => v === searchConfig)) setSearchConfig("");
+  }, [tab, searchType, searchConfig]);
   useEffect(() => {
     if (chatBodyRef.current) chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
   }, [msgs]);
@@ -199,10 +284,40 @@ export default function SiteClient({ properties, dealers, areas, localities = []
   function scrollToId(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }
+  // Budget option values encode how they filter: a plain number means
+  // "under X" (price <= X), a trailing "+" means "X or above" (price >= X),
+  // and "min-max" means an inclusive range — parsed once in the list filter
+  // below rather than duplicated per tab.
   function budgetOptions(): [string, string][] {
-    return tab === "rent"
-      ? [["", "Budget"], ["8000", "Under ₹8k"], ["12000", "Under ₹12k"], ["18000", "Under ₹18k"], ["25000", "Under ₹25k"], ["40000", "Under ₹40k"]]
-      : [["", "Budget"], ["2000000", "Under ₹20 L"], ["3500000", "Under ₹35 L"], ["5000000", "Under ₹50 L"], ["7500000", "Under ₹75 L"], ["10000000", "Under ₹1 Cr"]];
+    if (tab === "rent") {
+      return [
+        ["", "Any budget"],
+        ["8000", "Under ₹8k"],
+        ["12000", "Under ₹12k"],
+        ["18000", "Under ₹18k"],
+        ["18000+", "₹18k+"],
+      ];
+    }
+    if (tab === "PG") {
+      return [
+        ["", "Any Budget"],
+        ["8000", "Under ₹8,000"],
+        ["8000-12000", "₹8,000–₹12,000"],
+        ["12000-18000", "₹12,000–₹18,000"],
+        ["18000+", "Above ₹18,000"],
+      ];
+    }
+    // Buy ("sale") — Commercial's budget is handled separately via
+    // COMMERCIAL_BUDGET_OPTIONS, keyed by Listing type, not through here.
+    return [
+      ["", "Any budget"],
+      ["1000000", "Under ₹10L"],
+      ["2000000", "Under ₹20L"],
+      ["3500000", "Under ₹35L"],
+      ["5000000", "Under ₹50L"],
+      ["10000000", "Under ₹1Cr"],
+      ["10000000+", "₹1Cr+"],
+    ];
   }
   /* ---------------- list ---------------- */
   const list = useMemo(() => {
@@ -212,10 +327,29 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     // "PG" tab covers both PG and Hostel listings — the post-property wizard
     // treats them as one "PG / Hostel" purpose with two sub-kinds.
     else if (tab === "PG") l = l.filter((p) => p.ptype === "PG" || p.ptype === "Hostel");
-    else l = l.filter((p) => p.ptype === tab);
+    // Commercial ("Shop") covers all commercial ptypes; Listing type below
+    // narrows to rent vs sale within that set.
+    else if (tab === "Shop") l = l.filter((p) => COMMERCIAL_PTYPES.includes(p.ptype));
+    // New Projects has no listings/data model yet — placeholder tab only.
+    else if (tab === "newProjects") l = [];
     if (appliedLoc) l = l.filter((p) => p.loc === appliedLoc);
-    if (appliedType) l = l.filter((p) => p.ptype === appliedType);
-    if (appliedBud) l = l.filter((p) => p.price <= appliedBud);
+    // Buy's "Commercial" Property-type option is an umbrella over all
+    // commercial ptypes (Shop/Office/Showroom/Warehouse-Godown), not a
+    // literal ptype value — matches the same set the Commercial tab uses.
+    if (appliedType === "Commercial") l = l.filter((p) => COMMERCIAL_PTYPES.includes(p.ptype));
+    else if (appliedType) l = l.filter((p) => p.ptype === appliedType);
+    if (appliedBud) l = l.filter((p) => matchesBudget(p.price, appliedBud));
+    if (tab === "Shop" && appliedListingType) {
+      const wantType = appliedListingType === "Rent" ? "rent" : "sale";
+      l = l.filter((p) => p.type === wantType);
+    }
+    if (tab === "PG" && appliedFor) l = l.filter((p) => appliedFor === "co-ed" ? true : p.genderPreference === appliedFor);
+    // Rent Configuration: real filter for Flat/House (bhk-backed). Room has
+    // no matching field on this list's Property type — see the state-decl
+    // comment — so it's intentionally not filtered here, not a bug.
+    if (tab === "rent" && appliedConfig && (appliedType === "Flat" || appliedType === "House")) {
+      l = l.filter((p) => (appliedConfig === "4" ? p.bhk >= 4 : p.bhk === +appliedConfig));
+    }
     if (fBhk) l = l.filter((p) => (fBhk === "4" ? p.bhk >= 4 : p.bhk === +fBhk));
     if (fFurn) l = l.filter((p) => p.furnish === fFurn);
     if (cVer) l = l.filter((p) => p.verified);
@@ -224,15 +358,19 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     if (fSort === "hi") l.sort((a, b) => b.price - a.price);
     if (fSort === "new") l.sort((a, b) => a.postedDays - b.postedDays);
     return l;
-  }, [properties, tab, appliedLoc, appliedType, appliedBud, fBhk, fFurn, fSort, cVer, cCoach]);
+  }, [properties, tab, appliedLoc, appliedType, appliedBud, appliedListingType, appliedFor, appliedConfig, fBhk, fFurn, fSort, cVer, cCoach]);
 
-  const ctx = (tab === "sale" ? "For sale" : tab === "rent" ? "For rent" : tab) + (appliedLoc ? " in " + appliedLoc : " in Kota") + " —";
+  const ctx = (tab === "sale" ? "For sale" : tab === "rent" ? "For rent" : tab === "newProjects" ? "New Projects" : tab) + (appliedLoc ? " in " + appliedLoc : " in Kota") + " —";
   const rem = list.length - shown;
 
   function applySearch() {
     setAppliedLoc(searchLoc);
     setAppliedType(searchType);
-    setAppliedBud(+searchBud || 0);
+    setAppliedBud(searchBud);
+    setAppliedConfig(searchConfig);
+    setAppliedFor(searchFor);
+    setAppliedSharing(searchSharing);
+    setAppliedListingType(searchListingType);
     scrollToId("listings");
   }
   function goArea(name: string) {
@@ -713,32 +851,118 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         <p>Verified houses, flats, plots &amp; rentals — direct from trusted partners</p>
         <div className="sbox">
           <div className="tabs">
-            {(["sale", "rent", "PG", "Plot", "Shop"] as Tab[]).map((tb) => (
+            {TABS.map((tb) => (
               <button key={tb} className={tab === tb ? "on" : ""} onClick={() => setTab(tb)}>
-                {tb === "sale" ? "Buy" : tb === "rent" ? "Rent" : tb === "Plot" ? "Plots" : tb === "Shop" ? "Commercial" : "PG"}
+                {tb === "sale" ? "Buy" : tb === "rent" ? "Rent" : tb === "newProjects" ? "New Projects" : tb === "Shop" ? "Commercial" : "PG"}
               </button>
             ))}
           </div>
-          <div className="sfields">
-            <select value={searchLoc} onChange={(e) => setSearchLoc(e.target.value)}>
-              <option value="">All localities in Kota</option>
-              {sortedLocalities.length > 0
-                ? sortedLocalities.map((l) => (
-                    <option key={l.slug} value={l.name}>
-                      {l.name}{l.status === "coming_soon" ? " (Coming Soon)" : ""}
-                    </option>
-                  ))
-                : areas.map((a) => <option key={a.name}>{a.name}</option>)}
-            </select>
-            <select value={searchType} onChange={(e) => setSearchType(e.target.value)}>
-              <option value="">Property type</option>
-              <option>Flat</option><option>House</option><option>Villa</option><option>Plot</option><option>Shop</option><option>PG</option>
-            </select>
-            <select value={searchBud} onChange={(e) => setSearchBud(e.target.value)}>
-              {budgetOptions().map(([v, lbl]) => <option key={lbl} value={v}>{lbl}</option>)}
-            </select>
-            <button className="go" onClick={applySearch}>🔍 Search</button>
-          </div>
+          {tab === "newProjects" ? (
+            <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--color-muted)" }}>
+              <div style={{ fontSize: 26, marginBottom: 6 }}>🏗️</div>
+              <div style={{ fontWeight: 700, color: "var(--color-heading)", marginBottom: 4 }}>New Projects — Coming soon</div>
+              <div style={{ fontSize: 13 }}>We&apos;re building this out. Check back soon for new project launches in Kota.</div>
+            </div>
+          ) : (
+            <div className="sfields">
+              <select value={searchLoc} onChange={(e) => setSearchLoc(e.target.value)}>
+                <option value="">All localities in Kota</option>
+                {sortedLocalities.length > 0
+                  ? sortedLocalities.map((l) => (
+                      <option key={l.slug} value={l.name}>
+                        {l.name}{l.status === "coming_soon" ? " (Coming Soon)" : ""}
+                      </option>
+                    ))
+                  : areas.map((a) => <option key={a.name}>{a.name}</option>)}
+              </select>
+
+              {tab === "sale" && (
+                <select value={searchType} onChange={(e) => setSearchType(e.target.value)}>
+                  <option value="">Any type</option>
+                  <option value="Flat">Flat</option>
+                  <option value="House">Independent house</option>
+                  <option value="Plot">Plot</option>
+                  <option value="Commercial">Commercial</option>
+                </select>
+              )}
+
+              {tab === "rent" && (
+                <>
+                  <select value={searchType} onChange={(e) => setSearchType(e.target.value)}>
+                    <option value="">Any type</option>
+                    <option value="Room">Room</option>
+                    <option value="Flat">Flat (Apartment)</option>
+                    <option value="House">House (Villa)</option>
+                  </select>
+                  <select
+                    value={searchConfig}
+                    onChange={(e) => setSearchConfig(e.target.value)}
+                    disabled={!searchType}
+                  >
+                    <option value="">Select Configuration</option>
+                    {(RENT_CONFIG_OPTIONS[searchType] ?? []).map(([v, lbl]) => (
+                      <option key={v} value={v}>{lbl}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+
+              {tab === "PG" && (
+                <>
+                  <select value={searchFor} onChange={(e) => setSearchFor(e.target.value)}>
+                    <option value="">For: Any</option>
+                    <option value="boys">Boys</option>
+                    <option value="girls">Girls</option>
+                    <option value="co-ed">Co-ed</option>
+                  </select>
+                  <select value={searchSharing} onChange={(e) => setSearchSharing(e.target.value)}>
+                    <option value="">Sharing: Any</option>
+                    <option value="single">Single</option>
+                    <option value="double">Double</option>
+                    <option value="triple">Triple</option>
+                    <option value="4+">4 sharing+</option>
+                  </select>
+                </>
+              )}
+
+              {tab === "Shop" && (
+                <>
+                  <select value={searchType} onChange={(e) => setSearchType(e.target.value)}>
+                    <option value="">Any Type</option>
+                    <option value="Shop">Shop</option>
+                    <option value="Office">Office</option>
+                    <option value="Showroom">Showroom</option>
+                    <option value="Warehouse-Godown">Warehouse-Godown</option>
+                  </select>
+                  <select value={searchListingType} onChange={(e) => setSearchListingType(e.target.value)}>
+                    <option value="">Listing type: Any</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Sale">Sale</option>
+                  </select>
+                </>
+              )}
+
+              {tab === "Shop" ? (
+                <select
+                  value={searchBud}
+                  onChange={(e) => setSearchBud(e.target.value)}
+                  disabled={!searchListingType}
+                >
+                  {searchListingType
+                    ? (COMMERCIAL_BUDGET_OPTIONS[searchListingType] ?? []).map(([v, lbl]) => (
+                        <option key={lbl} value={v}>{lbl}</option>
+                      ))
+                    : <option value="">Select listing type first</option>}
+                </select>
+              ) : (
+                <select value={searchBud} onChange={(e) => setSearchBud(e.target.value)}>
+                  {budgetOptions().map(([v, lbl]) => <option key={lbl} value={v}>{lbl}</option>)}
+                </select>
+              )}
+
+              <button className="go" onClick={applySearch}>🔍 Search</button>
+            </div>
+          )}
         </div>
         <div className="hstats">
           <span><b>{properties.length}</b> Properties</span>

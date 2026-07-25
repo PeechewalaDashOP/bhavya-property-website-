@@ -26,6 +26,7 @@ function mapProperty(row: Row, dealersById: Map<number, PublicDealer>): Property
     ptype: row.ptype as string,
     loc: row.loc as string,
     coaching: (row.coaching as string) ?? null,
+    genderPreference: (row.gender_preference as string) ?? null,
     bhk: (row.bhk as number) ?? 0,
     baths: (row.baths as number) ?? 0,
     title: row.title as string,

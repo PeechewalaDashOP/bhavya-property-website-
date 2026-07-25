@@ -100,7 +100,7 @@ section{padding:40px 0}
 .hero p{text-align:center;opacity:.9;font-size:14px;margin-top:6px;margin-bottom:16px;line-height:1.6}
 .sbox{background:var(--color-surface);border-radius:var(--radius-md);box-shadow:var(--shadow-3);overflow:hidden;color:var(--color-heading)}
 .tabs{display:flex;border-bottom:1px solid var(--color-border);overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:1;min-width:72px;padding:13px 8px;font-size:13.5px;font-weight:700;color:var(--color-muted);white-space:nowrap;border-bottom:3px solid transparent;transition:color var(--duration-fast) var(--ease),border-color var(--duration-fast) var(--ease)}
+.tabs button{flex:0 0 auto;min-width:72px;padding:13px 12px;font-size:13.5px;font-weight:700;color:var(--color-muted);white-space:nowrap;border-bottom:3px solid transparent;transition:color var(--duration-fast) var(--ease),border-color var(--duration-fast) var(--ease)}
 .tabs button.on{color:var(--color-primary);border-bottom-color:var(--color-primary)}
 .sfields{padding:12px;display:flex;flex-direction:column;gap:9px}
 .sfields select{width:100%;border:1px solid var(--color-border);background:var(--color-background);border-radius:var(--radius-sm);padding:13px;font-size:14.5px;color:var(--color-heading);transition:border-color var(--duration-fast) var(--ease)}

@@ -23,6 +23,7 @@ export type Property = {
   ptype: string;
   loc: string;
   coaching: string | null;
+  genderPreference: string | null;
   bhk: number;
   baths: number;
   title: string;

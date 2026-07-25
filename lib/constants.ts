@@ -4,7 +4,7 @@ export const KOTA_AREAS = [
   "Keshavpura", "Kunhadi", "Coral Park", "Nayapura", "Jawahar Nagar",
 ] as const;
 
-export const PROPERTY_TYPES = ["Hostel", "PG", "Room", "Flat", "House", "Shop", "Plot"] as const;
+export const PROPERTY_TYPES = ["Hostel", "PG", "Room", "Flat", "House", "Shop", "Plot", "Office", "Showroom", "Warehouse-Godown"] as const;
 export type PropertyType = typeof PROPERTY_TYPES[number];
 
 export const COACHING_HUBS = ["Allen", "Resonance", "FIITJEE", "Vibrant", "Motion", "Other"] as const;
@@ -17,6 +17,7 @@ export const FEATURES_LIST = [
 
 export const PTYPE_ICONS: Record<string, string> = {
   Hostel: "🏨", PG: "🛏️", Room: "🚪", Flat: "🏢", House: "🏠", Shop: "🏪", Plot: "📐",
+  Office: "🏢", Showroom: "🏬", "Warehouse-Godown": "🏭",
 };
 
 // Approximate centre coordinates for each Kota area (WGS-84)
