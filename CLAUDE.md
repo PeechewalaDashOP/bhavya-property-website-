@@ -26,6 +26,9 @@ The UI must stay **pixel-identical** to the original prototype.
 - Tailwind preflight is **disabled** (`tailwind.config.ts`) so it never alters the design.
 - Keep `<img>` (not next/image) where markup must match exactly.
 Do not "redesign" — only extend. If adding pages, match this visual language.
+**One named, scoped exception** — the homepage hero search widget (`.tabs`/
+`.sfields`) is no longer frozen; see "UI is FROZEN" in ABSOLUTE RULES below
+for what that covers and doesn't.
 
 ## File map
 ```
@@ -104,6 +107,16 @@ The CHOSEN product to build going forward is THIS folder (kota-next).
 - Match existing visual language exactly when adding new pages
 - app/globals.css is sacred — do not touch it
 - Tailwind preflight is disabled by design — do not re-enable it
+
+**Named exception (2026-07-25): the homepage hero search widget.** Bhavya
+explicitly commissioned a redesign of `.tabs`/`.sfields` in `SiteClient.tsx`
+(+ the matching `.tabs button` rule in `globals.css`) so each tab (Buy/Rent/
+PG/New Projects/Commercial) renders its own field set instead of one static
+one. This widget is no longer frozen — extending its fields/tabs further is
+expected, not a rule violation. Everything else on the page (listings grid,
+locality cards, footer, nav, etc.) is still fully covered by the rules above;
+this exception is scoped to the hero search widget only. If in doubt whether
+something counts as "the search widget," ask before extending the exception.
 
 ### Mobile First, Always
 - Every new component must work on 375px screen first

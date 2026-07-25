@@ -853,15 +853,67 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           <div className="tabs">
             {TABS.map((tb) => (
               <button key={tb} className={tab === tb ? "on" : ""} onClick={() => setTab(tb)}>
-                {tb === "sale" ? "Buy" : tb === "rent" ? "Rent" : tb === "newProjects" ? "New Projects" : tb === "Shop" ? "Commercial" : "PG"}
+                {tb === "sale" ? "Buy" : tb === "rent" ? "Rent" : tb === "newProjects" ? "New Projects" : tb === "Shop" ? "Commercial" : "Hostels / PG"}
               </button>
             ))}
           </div>
           {tab === "newProjects" ? (
-            <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--color-muted)" }}>
-              <div style={{ fontSize: 26, marginBottom: 6 }}>🏗️</div>
-              <div style={{ fontWeight: 700, color: "var(--color-heading)", marginBottom: 4 }}>New Projects — Coming soon</div>
-              <div style={{ fontSize: 13 }}>We&apos;re building this out. Check back soon for new project launches in Kota.</div>
+            <div style={{ padding: "26px 0", background: "linear-gradient(135deg,var(--color-primary),var(--color-primary-hover))" }}>
+              <style>{`
+                @keyframes newProjMarquee {
+                  from { transform: translateX(0); }
+                  to { transform: translateX(-50%); }
+                }
+                .newProjTrack { animation: newProjMarquee 22s linear infinite; }
+                @media (prefers-reduced-motion: reduce) {
+                  .newProjTrack { animation: none; }
+                }
+              `}</style>
+              <div style={{ overflow: "hidden" }}>
+                <div className="newProjTrack" style={{ display: "flex", width: "max-content" }}>
+                  {[0, 1].map((rep) => (
+                    <div key={rep} style={{ display: "flex", alignItems: "center" }}>
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 18px" }}>
+                          <span
+                            style={{
+                              fontFamily: "'Plus Jakarta Sans', sans-serif",
+                              fontWeight: 800,
+                              fontSize: 22,
+                              color: "#fff",
+                              letterSpacing: "-0.3px",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            🏗️ New Projects
+                          </span>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              background: "rgba(255,255,255,.16)",
+                              border: "1px solid rgba(255,255,255,.4)",
+                              color: "#fff",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                              padding: "6px 14px",
+                              borderRadius: 999,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Coming Soon
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p style={{ textAlign: "center", color: "rgba(255,255,255,.85)", fontSize: 13, marginTop: 18, marginBottom: 0, padding: "0 16px" }}>
+                We&apos;re building this out — check back soon for new project launches in Kota.
+              </p>
             </div>
           ) : (
             <div className="sfields">
