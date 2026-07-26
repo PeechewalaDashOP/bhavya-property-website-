@@ -184,7 +184,7 @@ const FEATURED_SHORTCUTS: FeaturedShortcut[] = [
     badge: "Live now",
     desc: "Verified houses, flats & plots — direct from owners.",
     cta: "Explore properties",
-    gradient: "linear-gradient(155deg, #115E59 0%, #0B3B37 100%)",
+    gradient: "linear-gradient(205deg, #115E59 0%, #0B3B37 100%)",
   },
 ];
 
@@ -1228,6 +1228,14 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             font-weight: 700; font-size: 13.5px; border-radius: var(--radius-full); padding: 10px 18px;
           }
           .fCardCtaArrow { width: 15px; height: 15px; }
+          @media (max-width: 679px) {
+            .fCard { padding-top: 18px; padding-bottom: 18px; }
+            .fCardBadge { margin-bottom: 10px; }
+            .fCardIcon { margin-bottom: 10px; }
+            .fCardTitle { margin-bottom: 4px; }
+            .fCardDesc { line-height: 1.4; margin-bottom: 12px; }
+            .fCardCta { padding: 14px 18px; }
+          }
           .soonStrip {
             margin-top: 16px; border: 1.5px dashed var(--color-border); border-radius: var(--radius-lg);
             background: var(--color-surface); padding: 16px 20px;
