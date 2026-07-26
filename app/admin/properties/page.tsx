@@ -37,6 +37,8 @@ const GENDER_PREF_TO_TARGET: Record<string, "male" | "female" | "both"> = {
 
 type UnitAttrs = { occupancy?: string; cooling?: string; facilities?: string[] } | null;
 
+type ReviewRow = { id: number; reviewer_name: string; rating: number; comment: string | null; created_at: string };
+
 type PropUnit = {
   id: number;
   label: string;
@@ -330,6 +332,44 @@ function PropertiesContent() {
   const [editVideoErr, setEditVideoErr] = useState("");
   const [flashedId, setFlashedId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [reviewsByProp, setReviewsByProp] = useState<Record<number, ReviewRow[]>>({});
+  const [reviewsLoadingId, setReviewsLoadingId] = useState<number | null>(null);
+  const [reviewActingId, setReviewActingId] = useState<number | null>(null);
+
+  // Lazy-load reviews only for the row currently expanded — avoids an N+1
+  // fetch for every row on the list view.
+  useEffect(() => {
+    if (expanded == null || reviewsByProp[expanded] !== undefined) return;
+    setReviewsLoadingId(expanded);
+    (async () => {
+      if (!supabase) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`/api/admin/reviews?property_id=${expanded}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      setReviewsByProp((prev) => ({ ...prev, [expanded]: data.reviews ?? [] }));
+      setReviewsLoadingId(null);
+    })();
+  }, [expanded, reviewsByProp]);
+
+  async function deleteReview(propertyId: number, reviewId: number) {
+    if (!supabase) return;
+    if (!confirm("Delete this review? This cannot be undone.")) return;
+    setReviewActingId(reviewId);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`/api/admin/reviews?id=${reviewId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${session!.access_token}` },
+    });
+    if (res.ok) {
+      setReviewsByProp((prev) => ({ ...prev, [propertyId]: (prev[propertyId] ?? []).filter((r) => r.id !== reviewId) }));
+    } else {
+      alert("Failed to delete review.");
+    }
+    setReviewActingId(null);
+  }
 
   // Debounce free-text search — 300ms after the user stops typing.
   useEffect(() => {
@@ -1671,6 +1711,39 @@ function PropertiesContent() {
                               <div>⭐ USP{p.hostel_meta.usp_category ? ` (${p.hostel_meta.usp_category})` : ""}: {p.hostel_meta.usp_text}</div>
                             )}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Reviews — anyone can post on the public page (no
+                          moderation queue), so admin's only lever is delete. */}
+                      {isOpen && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 6 }}>
+                            Reviews {reviewsByProp[p.id] ? `(${reviewsByProp[p.id].length})` : ""}
+                          </div>
+                          {reviewsLoadingId === p.id ? (
+                            <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Loading…</div>
+                          ) : (reviewsByProp[p.id] ?? []).length === 0 ? (
+                            <div style={{ fontSize: 12.5, color: "var(--muted)" }}>No reviews yet.</div>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              {(reviewsByProp[p.id] ?? []).map((r) => (
+                                <div key={r.id} style={{ background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                                  <div>
+                                    <div style={{ fontWeight: 700 }}>{r.reviewer_name} · <span style={{ color: "#f5a623" }}>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span></div>
+                                    {r.comment && <div style={{ color: "var(--muted)", marginTop: 2 }}>{r.comment}</div>}
+                                  </div>
+                                  <button
+                                    onClick={() => deleteReview(p.id, r.id)}
+                                    disabled={reviewActingId === r.id}
+                                    style={{ fontSize: 11, color: "var(--color-danger)", fontWeight: 700, border: "1px solid rgba(220,38,38,0.3)", borderRadius: 6, padding: "3px 8px", background: "#fff", cursor: "pointer", flexShrink: 0 }}
+                                  >
+                                    {reviewActingId === r.id ? "…" : "Delete"}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 

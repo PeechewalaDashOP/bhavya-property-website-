@@ -110,6 +110,157 @@ function DistanceWidget({
   );
 }
 
+/* ─── Reviews — anyone can post, no OTP/login gate (explicit product
+   decision); goes live immediately. Admin can delete from the admin
+   panel. See app/api/reviews/route.ts. ─────────────────────────── */
+type ReviewRow = { id: number; reviewer_name: string; rating: number; comment: string | null; created_at: string };
+
+function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
+  const full = Math.round(rating);
+  return (
+    <span style={{ color: "#f5a623", fontSize: size, letterSpacing: 1 }}>
+      {"★".repeat(full)}{"☆".repeat(5 - full)}
+    </span>
+  );
+}
+
+function ReviewsSection({ propertyId }: { propertyId: number }) {
+  const [reviews, setReviews] = useState<ReviewRow[]>([]);
+  const [average, setAverage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  const load = useCallback(() => {
+    fetch(`/api/reviews?property_id=${propertyId}`)
+      .then((r) => r.json())
+      .then((d) => { setReviews(d.reviews ?? []); setAverage(d.average ?? 0); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [propertyId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submit() {
+    setErr("");
+    if (name.trim().length < 2) { setErr("Please enter your name."); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_id: propertyId, reviewer_name: name.trim(), rating, comment: comment.trim() || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to submit review.");
+      setDone(true);
+      setName(""); setComment(""); setRating(5);
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to submit review.");
+    }
+    setSubmitting(false);
+  }
+
+  return (
+    <div className={styles.card}>
+      <div className={styles.sectionTitle}>Tenant Reviews</div>
+
+      {loading ? (
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading reviews…</div>
+      ) : reviews.length === 0 ? (
+        <div className={styles.reviewsPlaceholder}>
+          <div className={styles.reviewStars}>★★★★★</div>
+          <div className={styles.reviewMsg}>No reviews yet for this property.</div>
+          <div className={styles.reviewSub}>Be the first to share your experience.</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <span style={{ fontSize: 20, fontWeight: 800 }}>{average.toFixed(1)}</span>
+            <Stars rating={average} size={16} />
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>({reviews.length} review{reviews.length === 1 ? "" : "s"})</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+            {reviews.map((r) => (
+              <div key={r.id} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <strong style={{ fontSize: 13.5 }}>{r.reviewer_name}</strong>
+                  <Stars rating={r.rating} />
+                </div>
+                {r.comment && <p style={{ fontSize: 13, color: "var(--ink)", marginTop: 4, lineHeight: 1.5 }}>{r.comment}</p>}
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
+                  {new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {done ? (
+        <p style={{ fontSize: 13, color: "var(--color-primary)", fontWeight: 600 }}>✓ Thanks — your review is live.</p>
+      ) : !showForm ? (
+        <button
+          onClick={() => setShowForm(true)}
+          style={{ fontSize: 13, fontWeight: 700, color: "var(--color-primary)", background: "rgba(15,118,110,0.08)", border: "1.5px solid var(--color-primary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+        >
+          ✍️ Write a review
+        </button>
+      ) : (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 12 }}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontSize: 13.5, marginBottom: 10, boxSizing: "border-box" }}
+          />
+          <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <span
+                key={n}
+                onClick={() => setRating(n)}
+                style={{ cursor: "pointer", fontSize: 24, color: n <= rating ? "#f5a623" : "#d9d9d9" }}
+              >
+                ★
+              </span>
+            ))}
+          </div>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Share your experience (optional)"
+            rows={3}
+            style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 11px", fontSize: 13.5, resize: "vertical", fontFamily: "inherit", marginBottom: 10, boxSizing: "border-box" }}
+          />
+          {err && <p style={{ color: "var(--color-danger)", fontSize: 12.5, marginBottom: 10 }}>{err}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={submit}
+              disabled={submitting}
+              style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: "var(--ok, #16a06a)", border: "none", borderRadius: 8, padding: "9px 16px", cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1 }}
+            >
+              {submitting ? "Submitting…" : "Submit review"}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setErr(""); }}
+              disabled={submitting}
+              style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, padding: "9px 16px", cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Lead sheet ─────────────────────────────────────────────── */
 type LeadPhase = "form" | "otp" | "done";
 
@@ -611,9 +762,15 @@ function selectChip(
   return next;
 }
 
-function availInfo(count: number): { text: string; cls: string } {
+// "Only N left" is meant as a real scarcity signal (some rooms already
+// taken) — not just "this room type only has a small total to begin with".
+// A brand-new unit where nothing has been booked yet (available === total)
+// should never read as urgent, no matter how small that total is — that was
+// the "Only 1 left" showing on every admin-created room type that left
+// total/available at their defaults.
+function availInfo(count: number, total: number): { text: string; cls: string } {
   if (count === 0) return { text: "Full — no vacancy", cls: styles.availFull };
-  if (count <= 2) return { text: `⚡ Only ${count} left`, cls: styles.availFew };
+  if (count <= 2 && count < total) return { text: `⚡ Only ${count} left`, cls: styles.availFew };
   return { text: `✓ ${count} available`, cls: styles.availOk };
 }
 
@@ -746,7 +903,10 @@ export default function PropertyDetail({
 
   const propLat = property.lat ?? AREA_COORDS[property.loc]?.lat ?? null;
   const propLng = property.lng ?? AREA_COORDS[property.loc]?.lng ?? null;
-  const showDistWidget = Boolean(mapsKey && propLat && propLng);
+  // Map embed + "Distance from Your Location" hidden on every property page
+  // per explicit request — kept behind a flag rather than deleted in case
+  // it comes back later.
+  const showDistWidget = false && Boolean(mapsKey && propLat && propLng);
 
   const openSheet = useCallback(() => { setSheetOpen(true); }, []);
 
@@ -784,7 +944,7 @@ export default function PropertyDetail({
   const displayDeposit = selectedUnit?.deposit_amount ?? property.deposit_amount;
 
   const availUnit = selectedUnit ?? (units.length === 1 ? units[0] : null);
-  const avail = availUnit !== null ? availInfo(availUnit.available_count ?? 0) : null;
+  const avail = availUnit !== null ? availInfo(availUnit.available_count ?? 0, availUnit.total_count ?? 0) : null;
   const freshDays = availUnit ? daysSince(availUnit.last_confirmed_at) : null;
 
   const isFull = (availUnit?.available_count ?? -1) === 0;
@@ -1320,17 +1480,8 @@ export default function PropertyDetail({
             </div>
           )}
 
-          {/* §10 Reviews placeholder */}
-          <div className={styles.card}>
-            <div className={styles.sectionTitle}>Tenant Reviews</div>
-            <div className={styles.reviewsPlaceholder}>
-              <div className={styles.reviewStars}>★★★★★</div>
-              <div className={styles.reviewMsg}>No reviews yet for this property.</div>
-              <div className={styles.reviewSub}>
-                Reviews from verified tenants will appear here.
-              </div>
-            </div>
-          </div>
+          {/* §10 Reviews */}
+          <ReviewsSection propertyId={property.id} />
 
           {/* §11 Similar properties */}
           {similarProps.length > 0 && (
