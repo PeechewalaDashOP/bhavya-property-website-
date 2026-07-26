@@ -44,6 +44,14 @@ export default function PostPropertyPage() {
       .catch(() => setHasSession(false));
   }, []);
 
+  // Cancel/done both leave via router.replace() to "/" or "/dealer" — prefetch
+  // both now so that navigation is instant instead of round-tripping to the
+  // server at click time.
+  useEffect(() => {
+    router.prefetch("/");
+    router.prefetch("/dealer");
+  }, [router]);
+
   useEffect(() => {
     fetch("/api/search-localities?q=&all=1")
       .then((r) => r.json())

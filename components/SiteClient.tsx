@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Area, Locality, PublicDealer, Property } from "@/lib/types";
 import { fmt, capFirst } from "@/lib/format";
 import { TENANT_PREFERENCES } from "@/lib/constants";
@@ -870,7 +871,20 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           <a href="/account">{studentAuth?.loggedIn ? `👤 ${studentAuth.name || "My Account"}` : "Login / Sign up"}</a>
         </nav>
         <div className="sp" />
-        <button className="post" onClick={() => router.push("/dealer/post")}>+ Post Property</button>
+        {/* next/link (not router.push) so this route is prefetched as soon as
+            the header is on screen — the click just swaps in already-fetched
+            code/data instead of round-tripping to the server first. */}
+        <Link href="/dealer/post" className="post" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          + Post Property
+          <span
+            style={{
+              background: "var(--color-success)", color: "#fff", fontSize: 9.5, fontWeight: 800,
+              letterSpacing: ".04em", padding: "2px 6px", borderRadius: 999, lineHeight: 1,
+            }}
+          >
+            FREE
+          </span>
+        </Link>
         <button className="ham" onClick={() => setMobOpen((v) => !v)}>☰</button>
       </div></header>
       <div className={"mob" + (mobOpen ? " show" : "")} onClick={() => setMobOpen(false)}>
@@ -1428,7 +1442,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
           <div className="dcta">
             <h2 className="sec">List Your Property. Get Genuine Leads.</h2>
             <p className="sub">Add your property on Prop100 and receive verified buyer &amp; tenant enquiries directly on WhatsApp.</p>
-            <a className="btn" href="/dealer/post">+ List Your Property With Us</a>
+            <Link className="btn" href="/dealer/post">+ List Your Property With Us</Link>
           </div>
         )}
       </div></section>
