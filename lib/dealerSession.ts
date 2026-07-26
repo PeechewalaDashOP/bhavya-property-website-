@@ -93,7 +93,21 @@ type SessionRow = {
    (can_login=false) — callers never need to distinguish why, "null" just
    means "not logged in, send them to /dealer/login." */
 export async function getDealerSession(req: NextRequest): Promise<DealerSessionInfo | null> {
-  const sessionId = req.cookies.get(DEALER_SESSION_COOKIE)?.value;
+  return resolveSession(req.cookies.get(DEALER_SESSION_COOKIE)?.value);
+}
+
+// Same lookup, for Server Components — which read cookies via next/headers'
+// cookies() rather than a NextRequest. Kept as a separate export (rather
+// than widening getDealerSession's param type) so none of the 14 existing
+// API-route call sites need to change at all.
+type CookieReader = { get(name: string): { value: string } | undefined };
+export async function getDealerSessionFromCookieStore(
+  cookieStore: CookieReader
+): Promise<DealerSessionInfo | null> {
+  return resolveSession(cookieStore.get(DEALER_SESSION_COOKIE)?.value);
+}
+
+async function resolveSession(sessionId: string | undefined): Promise<DealerSessionInfo | null> {
   if (!sessionId) return null;
 
   const db = serviceDb();
