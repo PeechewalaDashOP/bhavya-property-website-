@@ -90,26 +90,144 @@ const COMMERCIAL_BUDGET_OPTIONS: Record<string, [string, string][]> = {
 };
 
 // Homepage "who are you" shortcuts — a generic, config-driven entry-point
-// system per the Family Rentals research report: each card just opens a
+// system per the Family Rentals research report: each entry just opens a
 // tab and optionally pre-sets a filter already wired into the search
-// widget (currently only tenantPreference, on the Rent tab). Adding a
-// future curated entry point (e.g. "Working Professionals") is adding one
-// object here — no new component, no new route, no architecture change.
-type HomeShortcut = {
+// widget (currently only tenantPreference, on the Rent tab). Only the two
+// categories with real supply today (Student Accommodation, Buy) render as
+// full featured cards; the rest render as inactive "coming soon" chips —
+// same ShortcutBase shape, so promoting a chip to a featured card later is
+// adding the extra display fields (badge/desc/cta/gradient) and moving the
+// object between the two arrays below, not restructuring the section.
+type ShortcutBase = {
   key: string;
-  icon: string;
-  label: string;
-  sub: string;
   tab: Tab;
   presetTenantPref?: string;
+  label: string;
+  icon: (props: { className?: string }) => JSX.Element;
 };
-const HOME_SHORTCUTS: HomeShortcut[] = [
-  { key: "student", icon: "🎓", label: "Student Accommodation", sub: "PG, hostels & shared rooms", tab: "PG" },
-  { key: "family", icon: "👨‍👩‍👧", label: "Family Rentals", sub: "Flats & houses for families", tab: "rent", presetTenantPref: "Family" },
-  { key: "professional", icon: "💼", label: "Working Professionals", sub: "Rentals near your workplace", tab: "rent", presetTenantPref: "Working Professional" },
-  { key: "commercial", icon: "🏢", label: "Commercial", sub: "Shops, offices & showrooms", tab: "Shop" },
-  { key: "newProjects", icon: "✨", label: "New Projects", sub: "Launching soon in Kota", tab: "newProjects" },
+type FeaturedShortcut = ShortcutBase & {
+  badge: string;
+  desc: string;
+  cta: string;
+  gradient: string;
+};
+
+function CapIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 2 8l10 5 10-5-10-5Z" />
+      <path d="M6 10.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5" />
+      <path d="M22 8v6" />
+    </svg>
+  );
+}
+function HomeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11 12 4l9 7" />
+      <path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" />
+    </svg>
+  );
+}
+function FamilyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="7" r="3" />
+      <circle cx="17" cy="8.5" r="2.2" />
+      <path d="M2.5 21c0-4 2.9-6.5 6.5-6.5s6.5 2.5 6.5 6.5" />
+      <path d="M15.3 15.2c2.4.4 4.2 2.4 4.2 5.3" />
+    </svg>
+  );
+}
+function BriefcaseIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="7" width="18" height="12" rx="2" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M3 12h18" />
+    </svg>
+  );
+}
+function BuildingIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="3" width="16" height="18" rx="1" />
+      <path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1" />
+    </svg>
+  );
+}
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+const FEATURED_SHORTCUTS: FeaturedShortcut[] = [
+  {
+    key: "student",
+    tab: "PG",
+    label: "Student Accommodation",
+    icon: CapIcon,
+    badge: "Live now",
+    desc: "Verified PGs & hostels near every coaching hub in Kota.",
+    cta: "Explore hostels & PGs",
+    gradient: "linear-gradient(155deg, #0F766E 0%, #0A4A45 100%)",
+  },
+  {
+    key: "buy",
+    tab: "sale",
+    label: "Buy a Property",
+    icon: HomeIcon,
+    badge: "Live now",
+    desc: "Verified houses, flats & plots — direct from owners.",
+    cta: "Explore properties",
+    gradient: "linear-gradient(155deg, #115E59 0%, #0B3B37 100%)",
+  },
 ];
+
+const COMING_SOON_SHORTCUTS: ShortcutBase[] = [
+  { key: "family", tab: "rent", presetTenantPref: "Family", label: "Family Rentals", icon: FamilyIcon },
+  { key: "professional", tab: "rent", presetTenantPref: "Working Professional", label: "Working Professionals", icon: BriefcaseIcon },
+  { key: "commercial", tab: "Shop", label: "Commercial", icon: BuildingIcon },
+];
+
+// Solid-gradient featured card for a live category (Student Accommodation,
+// Buy). Deliberately opaque, no backdrop-filter — the hero's glass search
+// card above is the only glass material on the page.
+function FeaturedCard({ shortcut, onClick }: { shortcut: FeaturedShortcut; onClick: () => void }) {
+  const Icon = shortcut.icon;
+  return (
+    <button className="fCard" style={{ background: shortcut.gradient }} onClick={onClick}>
+      <span className="fCardTexture" aria-hidden="true" />
+      <span className="fCardBody">
+        <span className="fCardBadge">{shortcut.badge}</span>
+        <Icon className="fCardIcon" />
+        <span className="fCardTitle">{shortcut.label}</span>
+        <span className="fCardDesc">{shortcut.desc}</span>
+        <span className="fCardCta">
+          {shortcut.cta}
+          <ArrowRightIcon className="fCardCtaArrow" />
+        </span>
+      </span>
+    </button>
+  );
+}
+
+// Inactive roadmap chip — not a link, just a "this is coming" signal. Same
+// ShortcutBase shape as FeaturedCard's data so promoting one to a full
+// featured card later is a data move, not a rebuild of this component.
+function ComingSoonChip({ shortcut }: { shortcut: ShortcutBase }) {
+  const Icon = shortcut.icon;
+  return (
+    <span className="soonChip">
+      <Icon className="soonChipIcon" />
+      {shortcut.label}
+    </span>
+  );
+}
 
 // Auto-rotating photo strip for a listing card — images only, never the
 // property's videos. Manual arrow/dot taps stop propagation so they don't
@@ -421,7 +539,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     setSearchLoc(name);
     scrollToId("listings");
   }
-  function goShortcut(s: HomeShortcut) {
+  function goShortcut(s: ShortcutBase) {
     setTab(s.tab);
     if (s.presetTenantPref) {
       setSearchTenantPref(s.presetTenantPref);
@@ -1067,37 +1185,82 @@ export default function SiteClient({ properties, dealers, areas, localities = []
         </div>
       </div></div>
 
-      {/* HOMEPAGE SHORTCUTS — "who are you" entry points. Each tile just
-          opens a tab (optionally with a filter pre-set); see HOME_SHORTCUTS
-          and goShortcut() above. Not a new module for any of these — Family
-          Rentals in particular is the Rent tab with Available For=Family
-          pre-applied, not a separate listings source. */}
+      {/* HOMEPAGE SHORTCUTS — "who are you" entry points. Featured cards for
+          the two categories with real supply today (Student Accommodation,
+          Buy); everything else is an inactive "coming soon" chip until it
+          has real inventory. See FEATURED_SHORTCUTS / COMING_SOON_SHORTCUTS
+          and goShortcut() above — Family Rentals, once promoted, is still
+          just the Rent tab with Available For=Family pre-applied, not a
+          separate listings source. */}
       <section id="shortcuts"><div className="wrap">
         <style>{`
-          .shortcutGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-          @media (min-width: 680px) { .shortcutGrid { grid-template-columns: repeat(5, 1fr); } }
-          .shortcutCard {
-            display: flex; flex-direction: column; align-items: center; text-align: center;
-            gap: 4px; padding: 20px 12px; border-radius: var(--radius-lg);
-            border: 1px solid var(--color-border); background: var(--color-surface);
-            box-shadow: var(--shadow-1); cursor: pointer;
-            transition: box-shadow var(--duration-base) var(--ease), transform var(--duration-base) var(--ease), border-color var(--duration-base) var(--ease);
+          .fCardGrid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+          @media (min-width: 680px) { .fCardGrid { grid-template-columns: 1fr 1fr; } }
+          .fCard {
+            display: block; width: 100%; position: relative; overflow: hidden; text-align: left;
+            border-radius: var(--radius-lg); padding: 26px 24px; color: #fff; cursor: pointer;
+            box-shadow: 0 10px 26px -10px rgba(6,40,36,.4);
+            transition: transform var(--duration-base) var(--ease), box-shadow var(--duration-base) var(--ease);
           }
-          .shortcutCard:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); border-color: var(--color-primary); }
-          .shortcutCard .icon { font-size: 28px; line-height: 1; margin-bottom: 4px; }
-          .shortcutCard .lbl { font-size: 14px; font-weight: 700; color: var(--color-heading); }
-          .shortcutCard .sub { font-size: 11.5px; color: var(--color-muted); line-height: 1.4; }
+          @media (hover: hover) and (pointer: fine) {
+            .fCard:hover { transform: translateY(-4px); box-shadow: 0 20px 38px -12px rgba(6,40,36,.55); }
+          }
+          @media (prefers-reduced-motion: reduce) { .fCard { transition: box-shadow var(--duration-base) var(--ease); } .fCard:hover { transform: none; } }
+          .fCardTexture {
+            position: absolute; inset: 0; pointer-events: none;
+            background-image: radial-gradient(rgba(255,255,255,.5) 1px, transparent 1.5px);
+            background-size: 15px 15px; opacity: .12;
+            -webkit-mask-image: linear-gradient(155deg, #000 0%, transparent 65%);
+            mask-image: linear-gradient(155deg, #000 0%, transparent 65%);
+          }
+          .fCardBody { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; }
+          .fCardBadge {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+            background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3);
+            border-radius: var(--radius-full); padding: 4px 11px; margin-bottom: 18px;
+          }
+          .fCardIcon { width: 46px; height: 46px; margin-bottom: 16px; }
+          .fCardTitle { font-size: 21px; font-weight: 800; letter-spacing: -0.2px; margin-bottom: 6px; }
+          .fCardDesc { font-size: 14px; line-height: 1.55; color: rgba(255,255,255,.8); margin-bottom: 22px; max-width: 34ch; }
+          .fCardCta {
+            display: inline-flex; align-items: center; gap: 7px; background: #fff; color: #0A4A45;
+            font-weight: 700; font-size: 13.5px; border-radius: var(--radius-full); padding: 10px 18px;
+          }
+          .fCardCtaArrow { width: 15px; height: 15px; }
+          .soonStrip {
+            margin-top: 16px; border: 1.5px dashed var(--color-border); border-radius: var(--radius-lg);
+            background: var(--color-surface); padding: 16px 20px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+          }
+          .soonLabel {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+            color: var(--color-muted); flex: 0 0 auto;
+          }
+          .soonChips { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; }
+          .soonChip {
+            display: inline-flex; align-items: center; gap: 6px; background: #F0FDFA;
+            border: 1px solid var(--color-primary-light); color: var(--color-heading);
+            font-size: 13px; font-weight: 600; border-radius: var(--radius-full); padding: 7px 13px;
+            cursor: default;
+          }
+          .soonChipIcon { width: 15px; height: 15px; color: var(--color-primary); flex: 0 0 auto; }
         `}</style>
         <h2 className="sec">Find what fits you</h2>
         <p className="sub">Curated shortcuts into the same verified listings — pick who you are</p>
-        <div className="shortcutGrid">
-          {HOME_SHORTCUTS.map((s) => (
-            <button key={s.key} className="shortcutCard" onClick={() => goShortcut(s)}>
-              <span className="icon">{s.icon}</span>
-              <span className="lbl">{s.label}</span>
-              <span className="sub">{s.sub}</span>
-            </button>
+        <div className="fCardGrid">
+          {FEATURED_SHORTCUTS.map((s) => (
+            <FeaturedCard key={s.key} shortcut={s} onClick={() => goShortcut(s)} />
           ))}
+        </div>
+        <div className="soonStrip">
+          <span className="soonLabel">Coming soon</span>
+          <div className="soonChips">
+            {COMING_SOON_SHORTCUTS.map((s) => (
+              <ComingSoonChip key={s.key} shortcut={s} />
+            ))}
+          </div>
         </div>
       </div></section>
 
