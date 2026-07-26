@@ -10,9 +10,25 @@ import { uploadFileWithRetry } from "@/lib/upload";
 import {
   ROOM_CATEGORIES, USER_TYPES, ROOM_FACILITIES, COOLING_TYPES, HOUSE_RULES,
   TENANT_TYPES, CORE_SERVICES, COMMON_AMENITIES, PARKING_TYPES, ELECTRICITY_OPTIONS,
-  NOTICE_PERIODS, GATE_TIMES, USP_CATEGORIES,
+  NOTICE_PERIODS, USP_CATEGORIES, PHOTO_TAGS, MEDIA_SECTIONS,
   type RoomCategoryKey, type UserType, type CoolingType, type ElectricityBilling,
 } from "@/app/dealer/post/types";
+
+// Tagged, orderable photo — mirrors app/dealer/post/hostel/Step4Media.tsx's
+// MediaItem so admin-uploaded PG/Hostel photos get the same section/tag/cover
+// metadata (and the same room-variant photo-jump on the public listing page).
+type PgMediaItem = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  section: string;
+  tag: string;
+  isCover: boolean;
+};
+
+function pgMediaId() {
+  return Math.random().toString(36).slice(2, 10);
+}
 
 type Purpose = "rent" | "sale" | "pg";
 
@@ -132,8 +148,10 @@ export default function AdminNewPropertyPage() {
   const [uspCategory, setUspCategory] = useState("");
   const [uspText, setUspText] = useState("");
 
-  // Media
+  // Media — non-PG purposes use the plain `photos` bulk list; PG/Hostel uses
+  // `pgMedia`, which carries per-photo tag/section/cover + manual ordering.
   const [photos, setPhotos] = useState<File[]>([]);
+  const [pgMedia, setPgMedia] = useState<PgMediaItem[]>([]);
   const [videos, setVideos] = useState<File[]>([]);
   const [videoErr, setVideoErr] = useState("");
 
@@ -143,6 +161,18 @@ export default function AdminNewPropertyPage() {
   const [done, setDone] = useState<{ id: number; slug: string; title: string } | null>(null);
 
   const ptypeOptions = purpose === "pg" ? ["Hostel", "PG"] : purpose === "rent" ? RENT_PTYPES : SALE_PTYPES;
+
+  // Photo "section" choices — the fixed non-room sections plus one entry per
+  // room category currently in use, so a photo can be tied to a specific room
+  // type (drives the room-variant photo-jump on the public listing page).
+  const usedCategories = Array.from(new Set(units.map((u) => u.category)));
+  const pgSections = [
+    ...MEDIA_SECTIONS,
+    ...usedCategories.map((key) => ({
+      key, icon: "🛏️",
+      label: `${ROOM_CATEGORIES.find((c) => c.key === key)?.label ?? key} Room`,
+    })),
+  ];
 
   function setPurposeAndDefaultPtype(p: Purpose) {
     setPurpose(p);
@@ -203,6 +233,41 @@ export default function AdminNewPropertyPage() {
     setVideos((prev) => [...prev, ...arr]);
   }
 
+  function addPgPhotos(files: FileList | null) {
+    if (!files) return;
+    const arr = Array.from(files).map((file) => ({
+      id: pgMediaId(), file, previewUrl: URL.createObjectURL(file),
+      section: "building", tag: "room", isCover: false,
+    }));
+    setPgMedia((prev) => [...prev, ...arr]);
+  }
+  function removePgMedia(id: string) {
+    setPgMedia((prev) => {
+      const item = prev.find((x) => x.id === id);
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+  }
+  function setPgCover(id: string) {
+    setPgMedia((prev) => prev.map((x) => ({ ...x, isCover: x.id === id })));
+  }
+  function setPgTag(id: string, tag: string) {
+    setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, tag } : x)));
+  }
+  function setPgSection(id: string, section: string) {
+    setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, section } : x)));
+  }
+  function movePgMedia(id: string, dir: -1 | 1) {
+    setPgMedia((prev) => {
+      const i = prev.findIndex((x) => x.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
   function reset() {
     setOwnerName(""); setOwnerPhone(""); setOwnerWhatsapp(true);
     setPurposeAndDefaultPtype("pg");
@@ -216,11 +281,14 @@ export default function AdminNewPropertyPage() {
     setNoticePeriod("30"); setGateTimingEnabled(false); setGateClosingTime("22:00");
     setServices([]); setElectricity(""); setCommonAmenities([]); setParkingEnabled(false);
     setParkingTypes([]); setUspCategory(""); setUspText("");
+    pgMedia.forEach((m) => URL.revokeObjectURL(m.previewUrl));
+    setPgMedia([]);
     setPhotos([]); setVideos([]); setVideoErr(""); setDone(null); setErr("");
   }
 
   async function submit() {
     setErr("");
+    const isPg = purpose === "pg";
     if (!supabase) return;
     if (ownerName.trim().length < 2) { setErr("Owner name is required."); return; }
     if (ownerPhone.replace(/\D/g, "").length !== 10) { setErr("Owner phone must be 10 digits."); return; }
@@ -248,10 +316,14 @@ export default function AdminNewPropertyPage() {
 
       let photoPaths: string[] = [];
       let videoPaths: string[] = [];
+      let photoTagMap: Record<string, string> = {};
+      let photoSectionMap: Record<string, string> = {};
 
-      if (photos.length > 0 || videos.length > 0) {
+      const photoFiles = isPg ? pgMedia.map((m) => m.file) : photos;
+
+      if (photoFiles.length > 0 || videos.length > 0) {
         setUploadMsg("Compressing media…");
-        const [compPhotos, compVideos] = await Promise.all([compressImages(photos), compressVideos(videos)]);
+        const [compPhotos, compVideos] = await Promise.all([compressImages(photoFiles), compressVideos(videos)]);
 
         const allFiles = [
           ...compPhotos.map((f) => ({ name: f.name, type: f.type, category: "photo" as const })),
@@ -283,22 +355,36 @@ export default function AdminNewPropertyPage() {
           return d.files[0].signedUrl as string;
         };
 
+        let coverUrl = "";
         for (let i = 0; i < uploadUrls.length; i++) {
           const { signedUrl, publicUrl } = uploadUrls[i];
           const isPhoto = i < compPhotos.length;
           const num = isPhoto ? i + 1 : i - compPhotos.length + 1;
           setUploadMsg(`Uploading ${isPhoto ? "photo" : "video"} ${num}…`);
           await uploadFileWithRetry(signedUrl, allFileObjs[i], () => {}, () => refreshSignedUrl(allFiles[i]));
-          if (isPhoto) photoPaths.push(publicUrl);
-          else videoPaths.push(publicUrl);
+          if (isPhoto) {
+            photoPaths.push(publicUrl);
+            if (isPg && publicUrl) {
+              const item = pgMedia[i];
+              photoTagMap[publicUrl] = item.tag;
+              photoSectionMap[publicUrl] = item.section;
+              if (item.isCover) coverUrl = publicUrl;
+            }
+          } else {
+            videoPaths.push(publicUrl);
+          }
         }
         photoPaths = photoPaths.filter(Boolean);
         videoPaths = videoPaths.filter(Boolean);
+        // Cover photo always leads — same convention as HostelFlow.tsx, so the
+        // listing card / gallery opens on the photo the admin picked as cover.
+        if (isPg && coverUrl) {
+          photoPaths = [coverUrl, ...photoPaths.filter((p) => p !== coverUrl)];
+        }
       }
 
       setUploadMsg("Publishing listing…");
 
-      const isPg = purpose === "pg";
       const pgUnits = units.filter((u) => u.label && Number(u.price_per_month) > 0);
       // Same derivations HostelFlow.tsx makes from its per-room facilities/cooling
       // picks — keeps the top-level columns consistent whichever form wrote them.
@@ -373,6 +459,8 @@ export default function AdminNewPropertyPage() {
               parking_types: parkingTypes,
               usp_category: uspCategory || null,
               usp_text: uspText.trim() || null,
+              photo_tags: photoTagMap,
+              photo_sections: photoSectionMap,
             }
           : undefined,
         lat, lng,
@@ -744,9 +832,7 @@ export default function AdminNewPropertyPage() {
           {gateTimingEnabled && (
             <label style={{ display: "block", marginTop: 8, maxWidth: 220 }}>
               <span style={labelStyle}>Gate closing time</span>
-              <select style={inputStyle} value={gateClosingTime} onChange={(e) => setGateClosingTime(e.target.value)}>
-                {GATE_TIMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              <input type="time" style={inputStyle} value={gateClosingTime} onChange={(e) => setGateClosingTime(e.target.value)} />
             </label>
           )}
 
@@ -968,19 +1054,67 @@ export default function AdminNewPropertyPage() {
       {/* Media */}
       <div style={sectionStyle}>
         <div style={sectionTitle}>Photos & videos (from WhatsApp)</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <label style={{ fontSize: 13, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>
-            📷 Add photos ({photos.length})
-            <input type="file" accept="image/*" multiple hidden onChange={(e) => setPhotos((prev) => [...prev, ...Array.from(e.target.files ?? [])])} />
-          </label>
-          <label style={{ fontSize: 13, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>
-            🎥 Add videos ({videos.length})
-            <input type="file" accept="video/*" multiple hidden onChange={(e) => onVideoFiles(e.target.files)} />
-          </label>
-        </div>
-        {videoErr && <p style={{ color: "var(--color-danger)", fontSize: 12.5, marginBottom: 8 }}>{videoErr}</p>}
-        {photos.length > 0 && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+
+        {purpose === "pg" ? (
+          <>
+            <label style={{ display: "inline-block", fontSize: 13, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "10px 16px", cursor: "pointer", marginBottom: 12 }}>
+              📷 Add photos ({pgMedia.length})
+              <input type="file" accept="image/*" multiple hidden onChange={(e) => { addPgPhotos(e.target.files); e.target.value = ""; }} />
+            </label>
+            <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: -6, marginBottom: 10 }}>
+              Tag what each photo shows and pick a cover — same tags used on the owner's own upload form. Use ↑/↓ to set the order they show in on the listing.
+            </p>
+            {pgMedia.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                {pgMedia.map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", border: "1px solid var(--line)", borderRadius: 10, padding: 8, background: "var(--bg)" }}>
+                    <div style={{ position: "relative", flexShrink: 0 }}>
+                      <img src={m.previewUrl} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8 }} />
+                      {m.isCover && (
+                        <span style={{ position: "absolute", top: -6, left: -6, fontSize: 10, fontWeight: 800, background: "var(--color-primary)", color: "#fff", borderRadius: 10, padding: "2px 6px" }}>★ Cover</span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <select style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }} value={m.tag} onChange={(e) => setPgTag(m.id, e.target.value)}>
+                          {PHOTO_TAGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                        <select style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }} value={m.section} onChange={(e) => setPgSection(m.id, e.target.value)}>
+                          {pgSections.map((s) => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
+                        </select>
+                      </div>
+                      {!m.isCover && (
+                        <span onClick={() => setPgCover(m.id)} style={{ fontSize: 11.5, fontWeight: 700, color: "var(--color-primary)", cursor: "pointer", width: "fit-content" }}>
+                          Set as cover
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <button onClick={() => movePgMedia(m.id, -1)} disabled={i === 0} style={{ fontSize: 12, padding: "2px 8px", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.35 : 1, border: "1px solid var(--line)", borderRadius: 6, background: "var(--surface)" }}>↑</button>
+                      <button onClick={() => movePgMedia(m.id, 1)} disabled={i === pgMedia.length - 1} style={{ fontSize: 12, padding: "2px 8px", cursor: i === pgMedia.length - 1 ? "default" : "pointer", opacity: i === pgMedia.length - 1 ? 0.35 : 1, border: "1px solid var(--line)", borderRadius: 6, background: "var(--surface)" }}>↓</button>
+                    </div>
+                    <span onClick={() => removePgMedia(m.id)} style={{ cursor: "pointer", color: "var(--color-danger)", fontWeight: 800, padding: "0 4px" }}>✕</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>
+              📷 Add photos ({photos.length})
+              <input type="file" accept="image/*" multiple hidden onChange={(e) => setPhotos((prev) => [...prev, ...Array.from(e.target.files ?? [])])} />
+            </label>
+          </div>
+        )}
+
+        <label style={{ fontSize: 13, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "10px 16px", cursor: "pointer", display: "inline-block" }}>
+          🎥 Add videos ({videos.length})
+          <input type="file" accept="video/*" multiple hidden onChange={(e) => onVideoFiles(e.target.files)} />
+        </label>
+        {videoErr && <p style={{ color: "var(--color-danger)", fontSize: 12.5, marginTop: 8 }}>{videoErr}</p>}
+        {purpose !== "pg" && photos.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
             {photos.map((f, i) => (
               <span key={i} style={{ fontSize: 11.5, padding: "4px 10px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 20, display: "flex", alignItems: "center", gap: 6 }}>
                 {f.name.length > 18 ? f.name.slice(0, 15) + "…" : f.name}
@@ -990,7 +1124,7 @@ export default function AdminNewPropertyPage() {
           </div>
         )}
         {videos.length > 0 && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
             {videos.map((f, i) => (
               <span key={i} style={{ fontSize: 11.5, padding: "4px 10px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 20, display: "flex", alignItems: "center", gap: 6 }}>
                 {f.name.length > 18 ? f.name.slice(0, 15) + "…" : f.name}
