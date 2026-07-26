@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
       deposit_amount?: unknown; total_count?: unknown; available_count?: unknown;
       has_ac?: unknown; has_cooler?: unknown; attached_bath?: unknown;
       meals_included?: unknown; description?: unknown; sort_order?: unknown;
+      attributes?: unknown;
     };
     const toInsert = (unitRows as UnitInput[])
       .filter((u) => u.label && Number(u.price_per_month) > 0)
@@ -220,6 +221,7 @@ export async function POST(req: NextRequest) {
         meals_included: Boolean(u.meals_included),
         description: u.description ? String(u.description) : null,
         sort_order: Number(u.sort_order ?? i),
+        attributes: u.attributes && typeof u.attributes === "object" ? u.attributes : null,
       }));
     if (toInsert.length > 0) {
       await db.from("property_units").insert(toInsert);

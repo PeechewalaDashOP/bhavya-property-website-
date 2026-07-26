@@ -7,11 +7,27 @@ import { KOTA_AREAS, COACHING_HUBS, FEATURES_LIST, TENANT_PREFERENCES } from "@/
 import { compressImages } from "@/lib/imageCompress";
 import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
 import { uploadFileWithRetry } from "@/lib/upload";
+import {
+  ROOM_CATEGORIES, USER_TYPES, ROOM_FACILITIES, COOLING_TYPES, HOUSE_RULES,
+  TENANT_TYPES, CORE_SERVICES, COMMON_AMENITIES, PARKING_TYPES, ELECTRICITY_OPTIONS,
+  NOTICE_PERIODS, GATE_TIMES, USP_CATEGORIES,
+  type RoomCategoryKey, type UserType, type CoolingType, type ElectricityBilling,
+} from "@/app/dealer/post/types";
 
 type Purpose = "rent" | "sale" | "pg";
 
 const RENT_PTYPES = ["Room", "Flat", "House", "Shop", "Office", "Showroom", "Warehouse-Godown"];
 const SALE_PTYPES = ["Flat", "House", "Shop", "Plot", "Office", "Showroom", "Warehouse-Godown"];
+
+const CURRENT_YEAR = new Date().getFullYear();
+const OPERATIONAL_YEARS = Array.from({ length: 30 }, (_, i) => String(CURRENT_YEAR - i));
+
+// boys/girls/any (top-level gender_preference column) <-> male/female/both
+// (hostel_meta.target_gender, same vocabulary the dealer wizard writes) —
+// two different columns want two different vocabularies for the same choice.
+const GENDER_PREF_TO_TARGET: Record<string, "male" | "female" | "both"> = {
+  boys: "male", girls: "female", any: "both",
+};
 
 function needsBhk(ptype: string) {
   return !["Shop", "Plot", "Office", "Showroom", "Warehouse-Godown"].includes(ptype);
@@ -22,15 +38,16 @@ function needsFloor(ptype: string) {
 
 type UnitRow = {
   id: string;
+  category: RoomCategoryKey;
+  customLabel: string;
   label: string;
   capacity: string;
   price_per_month: string;
   deposit_amount: string;
   total_count: string;
   available_count: string;
-  has_ac: boolean;
-  has_cooler: boolean;
-  attached_bath: boolean;
+  coolingType: CoolingType;
+  facilities: string[];
   meals_included: boolean;
   description: string;
 };
@@ -38,9 +55,10 @@ type UnitRow = {
 function emptyUnit(): UnitRow {
   return {
     id: Math.random().toString(36).slice(2, 9),
+    category: "single", customLabel: "",
     label: "", capacity: "1", price_per_month: "", deposit_amount: "",
     total_count: "1", available_count: "1",
-    has_ac: false, has_cooler: false, attached_bath: false, meals_included: false,
+    coolingType: "none", facilities: [], meals_included: false,
     description: "",
   };
 }
@@ -89,11 +107,30 @@ export default function AdminNewPropertyPage() {
   const [lng, setLng] = useState<number | null>(null);
   const [gpsMsg, setGpsMsg] = useState("");
 
-  // PG/Hostel-only
+  // PG/Hostel-only — mirrors app/dealer/post/hostel/HostelFlow.tsx field-for-field
+  // so admin cold-call entries carry the same detail as owner self-submissions.
   const [pgName, setPgName] = useState("");
   const [genderPreference, setGenderPreference] = useState("");
   const [mealsIncluded, setMealsIncluded] = useState(false);
   const [units, setUnits] = useState<UnitRow[]>([emptyUnit()]);
+  const [userType, setUserType] = useState<UserType>("owner");
+  const [address, setAddress] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [landmark, setLandmark] = useState("");
+  const [operationalSince, setOperationalSince] = useState("");
+  const [presentOnFloor, setPresentOnFloor] = useState("");
+  const [tenantTypes, setTenantTypes] = useState<string[]>([]);
+  const [houseRules, setHouseRules] = useState<string[]>([]);
+  const [noticePeriod, setNoticePeriod] = useState("30");
+  const [gateTimingEnabled, setGateTimingEnabled] = useState(false);
+  const [gateClosingTime, setGateClosingTime] = useState("22:00");
+  const [services, setServices] = useState<string[]>([]);
+  const [electricity, setElectricity] = useState<"" | ElectricityBilling>("");
+  const [commonAmenities, setCommonAmenities] = useState<string[]>([]);
+  const [parkingEnabled, setParkingEnabled] = useState(false);
+  const [parkingTypes, setParkingTypes] = useState<string[]>([]);
+  const [uspCategory, setUspCategory] = useState("");
+  const [uspText, setUspText] = useState("");
 
   // Media
   const [photos, setPhotos] = useState<File[]>([]);
@@ -118,9 +155,21 @@ export default function AdminNewPropertyPage() {
   function toggleTenantPref(t: string) {
     setTenantPreference((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   }
+  function toggleIn(list: string[], setList: (v: string[]) => void, key: string) {
+    setList(list.includes(key) ? list.filter((x) => x !== key) : [...list, key]);
+  }
 
   function updateUnit(id: string, patch: Partial<UnitRow>) {
     setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+  }
+  function setUnitCategory(id: string, category: RoomCategoryKey) {
+    const cat = ROOM_CATEGORIES.find((c) => c.key === category);
+    setUnits((prev) => prev.map((u) => (u.id === id
+      ? { ...u, category, capacity: String(cat?.capacity ?? 1), label: u.label || (category === "other" ? "" : `${cat?.label ?? ""} Room`) }
+      : u)));
+  }
+  function toggleUnitFacility(id: string, key: string) {
+    setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, facilities: u.facilities.includes(key) ? u.facilities.filter((x) => x !== key) : [...u.facilities, key] } : u)));
   }
   function addUnit() {
     setUnits((prev) => [...prev, emptyUnit()]);
@@ -162,6 +211,11 @@ export default function AdminNewPropertyPage() {
     setAttachedBath(false); setCoachingHub(""); setAvailFrom(""); setMinStay("");
     setFeatures([]); setTenantPreference([]); setDescription(""); setLat(null); setLng(null); setGpsMsg("");
     setPgName(""); setGenderPreference(""); setMealsIncluded(false); setUnits([emptyUnit()]);
+    setUserType("owner"); setAddress(""); setPincode(""); setLandmark("");
+    setOperationalSince(""); setPresentOnFloor(""); setTenantTypes([]); setHouseRules([]);
+    setNoticePeriod("30"); setGateTimingEnabled(false); setGateClosingTime("22:00");
+    setServices([]); setElectricity(""); setCommonAmenities([]); setParkingEnabled(false);
+    setParkingTypes([]); setUspCategory(""); setUspText("");
     setPhotos([]); setVideos([]); setVideoErr(""); setDone(null); setErr("");
   }
 
@@ -245,6 +299,13 @@ export default function AdminNewPropertyPage() {
       setUploadMsg("Publishing listing…");
 
       const isPg = purpose === "pg";
+      const pgUnits = units.filter((u) => u.label && Number(u.price_per_month) > 0);
+      // Same derivations HostelFlow.tsx makes from its per-room facilities/cooling
+      // picks — keeps the top-level columns consistent whichever form wrote them.
+      const pgAttachedBath = pgUnits.some((u) => u.facilities.includes("washroom"));
+      const pgWifi = commonAmenities.includes("wifi");
+      const pgRoomCategories = Array.from(new Set(pgUnits.map((u) => u.category)));
+
       const body = {
         type: purpose === "sale" ? "sale" : "rent",
         ptype,
@@ -262,34 +323,58 @@ export default function AdminNewPropertyPage() {
         min_stay_months: minStay ? Number(minStay) : null,
         floor_number: needsFloor(ptype) && floorNum ? Number(floorNum) : null,
         total_floors: needsFloor(ptype) && totalFloors ? Number(totalFloors) : null,
-        attached_bathroom: attachedBath,
-        parking_available: parking,
-        wifi_included: wifi,
+        attached_bathroom: isPg ? pgAttachedBath : attachedBath,
+        parking_available: isPg ? parkingEnabled : parking,
+        wifi_included: isPg ? pgWifi : wifi,
         nearest_coaching_hub: coachingHub || null,
-        features,
+        features: isPg ? commonAmenities : features,
         tenant_preference: purpose === "rent" ? tenantPreference : [],
         description,
         photoPaths,
         videoPaths,
         units: isPg
-          ? units
-              .filter((u) => u.label && Number(u.price_per_month) > 0)
-              .map((u, i) => ({
-                label: u.label,
-                capacity: Number(u.capacity) || 1,
-                price_per_month: Number(u.price_per_month),
-                deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
-                total_count: Number(u.total_count) || 1,
-                available_count: Math.min(Number(u.available_count) || 1, Number(u.total_count) || 1),
-                has_ac: u.has_ac,
-                has_cooler: u.has_cooler,
-                attached_bath: u.attached_bath,
-                meals_included: u.meals_included,
-                description: u.description || null,
-                sort_order: i,
-              }))
+          ? pgUnits.map((u, i) => ({
+              label: u.label,
+              capacity: Number(u.capacity) || 1,
+              price_per_month: Number(u.price_per_month),
+              deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
+              total_count: Number(u.total_count) || 1,
+              available_count: Math.min(Number(u.available_count) || 1, Number(u.total_count) || 1),
+              has_ac: u.coolingType === "ac",
+              has_cooler: u.coolingType === "cooler",
+              attached_bath: u.facilities.includes("washroom"),
+              meals_included: u.meals_included,
+              description: u.description || null,
+              sort_order: i,
+              attributes: { occupancy: u.category, cooling: u.coolingType, facilities: u.facilities },
+            }))
           : [],
-        hostel_meta: isPg ? { pg_name: pgName || undefined, target_gender: genderPreference === "boys" ? "male" : genderPreference === "girls" ? "female" : "both", food_provided: mealsIncluded } : undefined,
+        hostel_meta: isPg
+          ? {
+              pg_name: pgName.trim() || undefined,
+              user_type: userType,
+              address: address.trim(),
+              pincode: pincode || null,
+              landmark: landmark.trim() || null,
+              operational_since: operationalSince || null,
+              present_on_floor: presentOnFloor.trim() || null,
+              room_categories: pgRoomCategories,
+              target_gender: GENDER_PREF_TO_TARGET[genderPreference] ?? "both",
+              tenant_types: tenantTypes,
+              house_rules: houseRules,
+              notice_period: noticePeriod,
+              gate_timing_enabled: gateTimingEnabled,
+              gate_closing_time: gateTimingEnabled ? gateClosingTime : null,
+              services,
+              food_provided: mealsIncluded,
+              electricity: electricity || null,
+              common_amenities: commonAmenities,
+              parking_enabled: parkingEnabled,
+              parking_types: parkingTypes,
+              usp_category: uspCategory || null,
+              usp_text: uspText.trim() || null,
+            }
+          : undefined,
         lat, lng,
         owner: { name: ownerName.trim(), phone: ownerPhone.replace(/\D/g, ""), whatsapp: ownerWhatsapp },
       };
@@ -422,6 +507,55 @@ export default function AdminNewPropertyPage() {
         </div>
       </div>
 
+      {/* PG-only: who's submitting + full address + operational details */}
+      {purpose === "pg" && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Owner is the</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {USER_TYPES.map((u) => (
+              <button
+                key={u.key}
+                onClick={() => setUserType(u.key)}
+                style={{
+                  flex: 1, padding: "9px 8px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                  border: userType === u.key ? "1.5px solid var(--color-primary)" : "1.5px solid var(--line)",
+                  background: userType === u.key ? "rgba(15,118,110,0.08)" : "var(--surface)",
+                  color: userType === u.key ? "var(--color-primary)" : "var(--ink)",
+                }}
+              >
+                {u.label}
+              </button>
+            ))}
+          </div>
+
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={labelStyle}>Full address</span>
+            <textarea style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} rows={2} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="House / building no., street, near which landmark…" />
+          </label>
+          <div style={grid}>
+            <label>
+              <span style={labelStyle}>Pincode</span>
+              <input style={inputStyle} value={pincode} onChange={(e) => setPincode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="324001" inputMode="numeric" />
+            </label>
+            <label>
+              <span style={labelStyle}>Landmark</span>
+              <input style={inputStyle} value={landmark} onChange={(e) => setLandmark(e.target.value)} placeholder="Near Allen gate" />
+            </label>
+            <label>
+              <span style={labelStyle}>Running since</span>
+              <select style={inputStyle} value={operationalSince} onChange={(e) => setOperationalSince(e.target.value)}>
+                <option value="">Select year…</option>
+                {OPERATIONAL_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <label>
+              <span style={labelStyle}>Present on floor</span>
+              <input style={inputStyle} value={presentOnFloor} onChange={(e) => setPresentOnFloor(e.target.value)} placeholder="e.g. 1st, 2nd" />
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* PG-only: gender + room types */}
       {purpose === "pg" && (
         <div style={sectionStyle}>
@@ -452,6 +586,18 @@ export default function AdminNewPropertyPage() {
               </div>
               <div style={grid}>
                 <label>
+                  <span style={labelStyle}>Category</span>
+                  <select style={inputStyle} value={u.category} onChange={(e) => setUnitCategory(u.id, e.target.value as RoomCategoryKey)}>
+                    {ROOM_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                  </select>
+                </label>
+                {u.category === "other" && (
+                  <label>
+                    <span style={labelStyle}>Custom category name</span>
+                    <input style={inputStyle} value={u.customLabel} onChange={(e) => updateUnit(u.id, { customLabel: e.target.value })} placeholder="e.g. Dormitory" />
+                  </label>
+                )}
+                <label>
                   <span style={labelStyle}>Label *</span>
                   <input style={inputStyle} value={u.label} onChange={(e) => updateUnit(u.id, { label: e.target.value })} placeholder="e.g. Single AC" />
                 </label>
@@ -468,7 +614,7 @@ export default function AdminNewPropertyPage() {
                   <input type="number" min={1} style={inputStyle} value={u.capacity} onChange={(e) => updateUnit(u.id, { capacity: e.target.value })} />
                 </label>
                 <label>
-                  <span style={labelStyle}>Total beds</span>
+                  <span style={labelStyle}>Total rooms</span>
                   <input type="number" min={1} style={inputStyle} value={u.total_count} onChange={(e) => updateUnit(u.id, { total_count: e.target.value })} />
                 </label>
                 <label>
@@ -476,19 +622,213 @@ export default function AdminNewPropertyPage() {
                   <input type="number" min={0} style={inputStyle} value={u.available_count} onChange={(e) => updateUnit(u.id, { available_count: e.target.value })} />
                 </label>
               </div>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 12.5 }}>
-                {([["has_ac", "AC"], ["has_cooler", "Cooler"], ["attached_bath", "Attached bath"], ["meals_included", "Meals"]] as const).map(([key, label]) => (
-                  <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                    <input type="checkbox" checked={u[key]} onChange={(e) => updateUnit(u.id, { [key]: e.target.checked } as Partial<UnitRow>)} />
-                    {label}
-                  </label>
-                ))}
+
+              <div style={{ marginTop: 10 }}>
+                <span style={labelStyle}>Cooling</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {COOLING_TYPES.map((c) => (
+                    <span
+                      key={c.key}
+                      onClick={() => updateUnit(u.id, { coolingType: c.key })}
+                      style={{
+                        fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                        border: u.coolingType === c.key ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                        background: u.coolingType === c.key ? "rgba(15,118,110,0.08)" : "var(--surface)",
+                        color: u.coolingType === c.key ? "var(--color-primary)" : "var(--muted)",
+                      }}
+                    >
+                      {c.icon} {c.label}
+                    </span>
+                  ))}
+                </div>
               </div>
+
+              <div style={{ marginTop: 10 }}>
+                <span style={labelStyle}>What&apos;s inside this room?</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {ROOM_FACILITIES.map((f) => (
+                    <span
+                      key={f.key}
+                      onClick={() => toggleUnitFacility(u.id, f.key)}
+                      style={{
+                        fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                        border: u.facilities.includes(f.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                        background: u.facilities.includes(f.key) ? "rgba(15,118,110,0.08)" : "var(--surface)",
+                        color: u.facilities.includes(f.key) ? "var(--color-primary)" : "var(--muted)",
+                      }}
+                    >
+                      {f.icon} {f.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", marginTop: 10, fontSize: 12.5 }}>
+                <input type="checkbox" checked={u.meals_included} onChange={(e) => updateUnit(u.id, { meals_included: e.target.checked })} />
+                Meals included in this rent
+              </label>
             </div>
           ))}
           <button onClick={addUnit} style={{ fontSize: 13, fontWeight: 700, color: "var(--color-primary)", background: "rgba(15,118,110,0.08)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}>
             + Add another room type
           </button>
+        </div>
+      )}
+
+      {/* PG-only: who can stay + house rules */}
+      {purpose === "pg" && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Who Can Stay</div>
+          <span style={labelStyle}>Tenant type</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {TENANT_TYPES.map((t) => (
+              <span
+                key={t.key}
+                onClick={() => toggleIn(tenantTypes, setTenantTypes, t.key)}
+                style={{
+                  fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                  border: tenantTypes.includes(t.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                  background: tenantTypes.includes(t.key) ? "rgba(15,118,110,0.08)" : "var(--bg)",
+                  color: tenantTypes.includes(t.key) ? "var(--color-primary)" : "var(--muted)",
+                }}
+              >
+                {t.label}
+              </span>
+            ))}
+          </div>
+
+          <span style={labelStyle}>House rules</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {HOUSE_RULES.map((r) => (
+              <span
+                key={r.key}
+                onClick={() => toggleIn(houseRules, setHouseRules, r.key)}
+                style={{
+                  fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                  border: houseRules.includes(r.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                  background: houseRules.includes(r.key) ? "rgba(15,118,110,0.08)" : "var(--bg)",
+                  color: houseRules.includes(r.key) ? "var(--color-primary)" : "var(--muted)",
+                }}
+              >
+                {r.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PG-only: timings, notice, services, electricity */}
+      {purpose === "pg" && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Timings, Services &amp; Electricity</div>
+          <div style={grid}>
+            <label>
+              <span style={labelStyle}>Notice period before leaving</span>
+              <select style={inputStyle} value={noticePeriod} onChange={(e) => setNoticePeriod(e.target.value)}>
+                {NOTICE_PERIODS.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}
+              </select>
+            </label>
+            <label>
+              <span style={labelStyle}>Electricity bill</span>
+              <select style={inputStyle} value={electricity} onChange={(e) => setElectricity(e.target.value as "" | ElectricityBilling)}>
+                <option value="">—</option>
+                {ELECTRICITY_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.icon} {o.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14 }}>
+            <input type="checkbox" checked={gateTimingEnabled} onChange={(e) => setGateTimingEnabled(e.target.checked)} />
+            <span style={{ fontSize: 13 }}>Gate closes at night</span>
+          </div>
+          {gateTimingEnabled && (
+            <label style={{ display: "block", marginTop: 8, maxWidth: 220 }}>
+              <span style={labelStyle}>Gate closing time</span>
+              <select style={inputStyle} value={gateClosingTime} onChange={(e) => setGateClosingTime(e.target.value)}>
+                {GATE_TIMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+          )}
+
+          <div style={{ marginTop: 14 }}>
+            <span style={labelStyle}>Services included</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {CORE_SERVICES.map((s) => (
+                <span
+                  key={s.key}
+                  onClick={() => toggleIn(services, setServices, s.key)}
+                  style={{
+                    fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                    border: services.includes(s.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                    background: services.includes(s.key) ? "rgba(15,118,110,0.08)" : "var(--bg)",
+                    color: services.includes(s.key) ? "var(--color-primary)" : "var(--muted)",
+                  }}
+                >
+                  {s.icon} {s.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PG-only: common amenities + parking */}
+      {purpose === "pg" && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Common Area Amenities</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8, marginBottom: 16 }}>
+            {COMMON_AMENITIES.map((a) => (
+              <label key={a.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={commonAmenities.includes(a.key)} onChange={() => toggleIn(commonAmenities, setCommonAmenities, a.key)} />
+                {a.icon} {a.label}
+              </label>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <input type="checkbox" checked={parkingEnabled} onChange={(e) => setParkingEnabled(e.target.checked)} />
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Parking available</span>
+          </div>
+          {parkingEnabled && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {PARKING_TYPES.map((p) => (
+                <span
+                  key={p.key}
+                  onClick={() => toggleIn(parkingTypes, setParkingTypes, p.key)}
+                  style={{
+                    fontSize: 12, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                    border: parkingTypes.includes(p.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                    background: parkingTypes.includes(p.key) ? "rgba(15,118,110,0.08)" : "var(--bg)",
+                    color: parkingTypes.includes(p.key) ? "var(--color-primary)" : "var(--muted)",
+                  }}
+                >
+                  {p.icon} {p.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PG-only: USP */}
+      {purpose === "pg" && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>What Makes This Special?</div>
+          <div style={grid}>
+            <label>
+              <span style={labelStyle}>Strongest selling point</span>
+              <select style={inputStyle} value={uspCategory} onChange={(e) => setUspCategory(e.target.value)}>
+                <option value="">Select category…</option>
+                {USP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            {uspCategory && (
+              <label>
+                <span style={labelStyle}>Details</span>
+                <input style={inputStyle} value={uspText} onChange={(e) => setUspText(e.target.value)} placeholder="e.g. Fresh home-cooked meals daily" maxLength={100} />
+              </label>
+            )}
+          </div>
         </div>
       )}
 
@@ -554,17 +894,19 @@ export default function AdminNewPropertyPage() {
             <input type="number" style={inputStyle} value={minStay} onChange={(e) => setMinStay(e.target.value)} />
           </label>
         </div>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 14, fontSize: 13 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-            <input type="checkbox" checked={parking} onChange={(e) => setParking(e.target.checked)} /> Parking
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-            <input type="checkbox" checked={wifi} onChange={(e) => setWifi(e.target.checked)} /> WiFi
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-            <input type="checkbox" checked={attachedBath} onChange={(e) => setAttachedBath(e.target.checked)} /> Attached bathroom
-          </label>
-        </div>
+        {purpose !== "pg" && (
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 14, fontSize: 13 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={parking} onChange={(e) => setParking(e.target.checked)} /> Parking
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={wifi} onChange={(e) => setWifi(e.target.checked)} /> WiFi
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={attachedBath} onChange={(e) => setAttachedBath(e.target.checked)} /> Attached bathroom
+            </label>
+          </div>
+        )}
 
         {purpose !== "pg" && (
           <div style={{ marginTop: 14 }}>
