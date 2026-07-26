@@ -68,6 +68,9 @@ export const PHOTO_SECTION_LABELS: Record<string, string> = {
   amenities: "Common Amenities",
   kitchen: "Kitchen",
   neighborhood: "Neighborhood View",
+  mess_area: "Mess Area",
+  corridor: "Corridor",
+  temple: "Temple",
   single: "Single Room",
   double: "Double Room",
   triple: "Triple Room",
@@ -82,7 +85,9 @@ export function photoCaption(
   if (!hm) return null;
   const section = hm.photo_sections?.[url];
   const tag = hm.photo_tags?.[url];
-  const sectionLabel = section ? PHOTO_SECTION_LABELS[section] ?? null : null;
+  // Unknown section strings are admin-typed custom tags (no schema for a
+  // dedicated free-text field) — show them verbatim rather than dropping them.
+  const sectionLabel = section ? PHOTO_SECTION_LABELS[section] ?? section : null;
   const tagLabel = tag ? PHOTO_TAG_LABELS[tag] ?? null : null;
   if (sectionLabel && tagLabel && tagLabel !== sectionLabel && tagLabel !== "Room") {
     return `${sectionLabel} — ${tagLabel}`;

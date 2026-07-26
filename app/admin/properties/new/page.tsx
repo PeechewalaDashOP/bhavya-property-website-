@@ -10,9 +10,13 @@ import { uploadFileWithRetry } from "@/lib/upload";
 import {
   ROOM_CATEGORIES, USER_TYPES, ROOM_FACILITIES, COOLING_TYPES, HOUSE_RULES,
   TENANT_TYPES, CORE_SERVICES, COMMON_AMENITIES, PARKING_TYPES, ELECTRICITY_OPTIONS,
-  NOTICE_PERIODS, USP_CATEGORIES, PHOTO_TAGS, MEDIA_SECTIONS,
+  NOTICE_PERIODS, GATE_TIMES, USP_CATEGORIES,
   type RoomCategoryKey, type UserType, type CoolingType, type ElectricityBilling,
 } from "@/app/dealer/post/types";
+import {
+  buildPhotoLabelOptions, resolvePhotoLabelOption,
+  PHOTO_LABEL_CUSTOM_VALUE, PHOTO_LABEL_NONE_VALUE,
+} from "@/app/admin/photoTagOptions";
 
 // Tagged, orderable photo — mirrors app/dealer/post/hostel/Step4Media.tsx's
 // MediaItem so admin-uploaded PG/Hostel photos get the same section/tag/cover
@@ -73,7 +77,7 @@ function emptyUnit(): UnitRow {
     id: Math.random().toString(36).slice(2, 9),
     category: "single", customLabel: "",
     label: "", capacity: "1", price_per_month: "", deposit_amount: "",
-    total_count: "1", available_count: "1",
+    total_count: "1", available_count: "",
     coolingType: "none", facilities: [], meals_included: false,
     description: "",
   };
@@ -114,11 +118,13 @@ export default function AdminNewPropertyPage() {
   const [wifi, setWifi] = useState(false);
   const [attachedBath, setAttachedBath] = useState(false);
   const [coachingHub, setCoachingHub] = useState("");
+  const [customCoachingHub, setCustomCoachingHub] = useState("");
   const [availFrom, setAvailFrom] = useState("");
   const [minStay, setMinStay] = useState("");
   const [features, setFeatures] = useState<string[]>([]);
   const [tenantPreference, setTenantPreference] = useState<string[]>([]);
   const [description, setDescription] = useState("");
+  const [isVerified, setIsVerified] = useState(false);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [gpsMsg, setGpsMsg] = useState("");
@@ -162,17 +168,12 @@ export default function AdminNewPropertyPage() {
 
   const ptypeOptions = purpose === "pg" ? ["Hostel", "PG"] : purpose === "rent" ? RENT_PTYPES : SALE_PTYPES;
 
-  // Photo "section" choices — the fixed non-room sections plus one entry per
-  // room category currently in use, so a photo can be tied to a specific room
-  // type (drives the room-variant photo-jump on the public listing page).
+  // One merged "what does this photo show" dropdown per photo — the fixed
+  // non-room options plus one entry per room category currently in use, so a
+  // photo can be tied to a specific room type (drives the room-variant
+  // photo-jump on the public listing page).
   const usedCategories = Array.from(new Set(units.map((u) => u.category)));
-  const pgSections = [
-    ...MEDIA_SECTIONS,
-    ...usedCategories.map((key) => ({
-      key, icon: "🛏️",
-      label: `${ROOM_CATEGORIES.find((c) => c.key === key)?.label ?? key} Room`,
-    })),
-  ];
+  const photoLabelOptions = buildPhotoLabelOptions(usedCategories);
 
   function setPurposeAndDefaultPtype(p: Purpose) {
     setPurpose(p);
@@ -237,7 +238,7 @@ export default function AdminNewPropertyPage() {
     if (!files) return;
     const arr = Array.from(files).map((file) => ({
       id: pgMediaId(), file, previewUrl: URL.createObjectURL(file),
-      section: "building", tag: "room", isCover: false,
+      section: "", tag: "", isCover: false,
     }));
     setPgMedia((prev) => [...prev, ...arr]);
   }
@@ -251,11 +252,19 @@ export default function AdminNewPropertyPage() {
   function setPgCover(id: string) {
     setPgMedia((prev) => prev.map((x) => ({ ...x, isCover: x.id === id })));
   }
-  function setPgTag(id: string, tag: string) {
-    setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, tag } : x)));
+  // One dropdown drives both tag+section together (see photoTagOptions.ts);
+  // choosing "Custom…" just clears both so the text box starts blank.
+  function setPgLabelOption(id: string, value: string) {
+    if (value === PHOTO_LABEL_CUSTOM_VALUE) {
+      setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, tag: "", section: "" } : x)));
+      return;
+    }
+    const opt = photoLabelOptions.find((o) => o.value === value);
+    if (!opt) return;
+    setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, tag: opt.tag, section: opt.section } : x)));
   }
-  function setPgSection(id: string, section: string) {
-    setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, section } : x)));
+  function setPgCustomLabel(id: string, text: string) {
+    setPgMedia((prev) => prev.map((x) => (x.id === id ? { ...x, tag: "", section: text } : x)));
   }
   function movePgMedia(id: string, dir: -1 | 1) {
     setPgMedia((prev) => {
@@ -273,8 +282,8 @@ export default function AdminNewPropertyPage() {
     setPurposeAndDefaultPtype("pg");
     setLoc(""); setBhk("1"); setBaths("1"); setPrice(""); setDeposit(""); setSqft("");
     setFurnishing(""); setFloorNum(""); setTotalFloors(""); setParking(false); setWifi(false);
-    setAttachedBath(false); setCoachingHub(""); setAvailFrom(""); setMinStay("");
-    setFeatures([]); setTenantPreference([]); setDescription(""); setLat(null); setLng(null); setGpsMsg("");
+    setAttachedBath(false); setCoachingHub(""); setCustomCoachingHub(""); setAvailFrom(""); setMinStay("");
+    setFeatures([]); setTenantPreference([]); setDescription(""); setIsVerified(false); setLat(null); setLng(null); setGpsMsg("");
     setPgName(""); setGenderPreference(""); setMealsIncluded(false); setUnits([emptyUnit()]);
     setUserType("owner"); setAddress(""); setPincode(""); setLandmark("");
     setOperationalSince(""); setPresentOnFloor(""); setTenantTypes([]); setHouseRules([]);
@@ -419,21 +428,28 @@ export default function AdminNewPropertyPage() {
         photoPaths,
         videoPaths,
         units: isPg
-          ? pgUnits.map((u, i) => ({
-              label: u.label,
-              capacity: Number(u.capacity) || 1,
-              price_per_month: Number(u.price_per_month),
-              deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
-              total_count: Number(u.total_count) || 1,
-              available_count: Math.min(Number(u.available_count) || 1, Number(u.total_count) || 1),
-              has_ac: u.coolingType === "ac",
-              has_cooler: u.coolingType === "cooler",
-              attached_bath: u.facilities.includes("washroom"),
-              meals_included: u.meals_included,
-              description: u.description || null,
-              sort_order: i,
-              attributes: { occupancy: u.category, cooling: u.coolingType, facilities: u.facilities },
-            }))
+          ? pgUnits.map((u, i) => {
+              const totalCount = Number(u.total_count) || 1;
+              // Blank = admin didn't specify how many are already taken — assume
+              // the whole room type is available rather than silently defaulting
+              // to 1 (which showed a false "⚡ Only 1 left" scarcity badge).
+              const availCount = u.available_count.trim() ? Number(u.available_count) : totalCount;
+              return {
+                label: u.label,
+                capacity: Number(u.capacity) || 1,
+                price_per_month: Number(u.price_per_month),
+                deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
+                total_count: totalCount,
+                available_count: Math.min(availCount, totalCount),
+                has_ac: u.coolingType === "ac",
+                has_cooler: u.coolingType === "cooler",
+                attached_bath: u.facilities.includes("washroom"),
+                meals_included: u.meals_included,
+                description: u.description || null,
+                sort_order: i,
+                attributes: { occupancy: u.category, cooling: u.coolingType, facilities: u.facilities },
+              };
+            })
           : [],
         hostel_meta: isPg
           ? {
@@ -461,9 +477,11 @@ export default function AdminNewPropertyPage() {
               usp_text: uspText.trim() || null,
               photo_tags: photoTagMap,
               photo_sections: photoSectionMap,
+              custom_coaching_hub: coachingHub === "Other" ? customCoachingHub.trim() || null : null,
             }
           : undefined,
         lat, lng,
+        is_verified: isVerified,
         owner: { name: ownerName.trim(), phone: ownerPhone.replace(/\D/g, ""), whatsapp: ownerWhatsapp },
       };
 
@@ -538,6 +556,17 @@ export default function AdminNewPropertyPage() {
         </div>
         <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10 }}>
           If this number is already in our system, the listing attaches to that owner automatically. Leads route to this number — the owner can later log in via OTP with the same number to manage it themselves.
+        </p>
+      </div>
+
+      {/* Trust badge — shows a "✓ Verified by Prop100" badge on the listing card and detail page */}
+      <div style={sectionStyle}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={isVerified} onChange={(e) => setIsVerified(e.target.checked)} />
+          <span style={{ fontSize: 13.5, fontWeight: 700 }}>✓ Mark as Verified by Prop100</span>
+        </label>
+        <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+          Shows a highlighted "Verified" badge on this listing's card and its individual page — use this only once you've confirmed the property in person or on the call.
         </p>
       </div>
 
@@ -694,7 +723,7 @@ export default function AdminNewPropertyPage() {
                   <input type="number" style={inputStyle} value={u.price_per_month} onChange={(e) => updateUnit(u.id, { price_per_month: e.target.value })} />
                 </label>
                 <label>
-                  <span style={labelStyle}>Deposit (₹)</span>
+                  <span style={labelStyle}>Security Deposit (₹)</span>
                   <input type="number" style={inputStyle} value={u.deposit_amount} onChange={(e) => updateUnit(u.id, { deposit_amount: e.target.value })} />
                 </label>
                 <label>
@@ -707,7 +736,7 @@ export default function AdminNewPropertyPage() {
                 </label>
                 <label>
                   <span style={labelStyle}>Available now</span>
-                  <input type="number" min={0} style={inputStyle} value={u.available_count} onChange={(e) => updateUnit(u.id, { available_count: e.target.value })} />
+                  <input type="number" min={0} style={inputStyle} value={u.available_count} onChange={(e) => updateUnit(u.id, { available_count: e.target.value })} placeholder="Blank = all available" />
                 </label>
               </div>
 
@@ -830,10 +859,20 @@ export default function AdminNewPropertyPage() {
             <span style={{ fontSize: 13 }}>Gate closes at night</span>
           </div>
           {gateTimingEnabled && (
-            <label style={{ display: "block", marginTop: 8, maxWidth: 220 }}>
+            <div style={{ marginTop: 8, maxWidth: 220 }}>
               <span style={labelStyle}>Gate closing time</span>
-              <input type="time" style={inputStyle} value={gateClosingTime} onChange={(e) => setGateClosingTime(e.target.value)} />
-            </label>
+              <select
+                style={inputStyle}
+                value={GATE_TIMES.some((t) => t.value === gateClosingTime) ? gateClosingTime : "custom"}
+                onChange={(e) => setGateClosingTime(e.target.value === "custom" ? "" : e.target.value)}
+              >
+                {GATE_TIMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                <option value="custom">Custom…</option>
+              </select>
+              {!GATE_TIMES.some((t) => t.value === gateClosingTime) && (
+                <input type="time" style={{ ...inputStyle, marginTop: 6 }} value={gateClosingTime} onChange={(e) => setGateClosingTime(e.target.value)} />
+              )}
+            </div>
           )}
 
           <div style={{ marginTop: 14 }}>
@@ -970,6 +1009,14 @@ export default function AdminNewPropertyPage() {
               <option value="">—</option>
               {COACHING_HUBS.map((h) => <option key={h} value={h}>{h}</option>)}
             </select>
+            {purpose === "pg" && coachingHub === "Other" && (
+              <input
+                style={{ ...inputStyle, marginTop: 6 }}
+                value={customCoachingHub}
+                onChange={(e) => setCustomCoachingHub(e.target.value)}
+                placeholder="Type the actual coaching name"
+              />
+            )}
           </label>
           <label>
             <span style={labelStyle}>Available from</span>
@@ -1062,11 +1109,14 @@ export default function AdminNewPropertyPage() {
               <input type="file" accept="image/*" multiple hidden onChange={(e) => { addPgPhotos(e.target.files); e.target.value = ""; }} />
             </label>
             <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: -6, marginBottom: 10 }}>
-              Tag what each photo shows and pick a cover — same tags used on the owner's own upload form. Use ↑/↓ to set the order they show in on the listing.
+              Tag what each photo shows and pick a cover. Use ↑/↓ to set the order they show in on the listing.
             </p>
             {pgMedia.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-                {pgMedia.map((m, i) => (
+                {pgMedia.map((m, i) => {
+                  const optionValue = resolvePhotoLabelOption(photoLabelOptions, m.tag, m.section);
+                  const isCustom = optionValue === PHOTO_LABEL_CUSTOM_VALUE;
+                  return (
                   <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", border: "1px solid var(--line)", borderRadius: 10, padding: 8, background: "var(--bg)" }}>
                     <div style={{ position: "relative", flexShrink: 0 }}>
                       <img src={m.previewUrl} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8 }} />
@@ -1076,12 +1126,17 @@ export default function AdminNewPropertyPage() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <select style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }} value={m.tag} onChange={(e) => setPgTag(m.id, e.target.value)}>
-                          {PHOTO_TAGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        <select style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }} value={optionValue} onChange={(e) => setPgLabelOption(m.id, e.target.value)}>
+                          {photoLabelOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
-                        <select style={{ ...inputStyle, width: "auto", padding: "5px 8px", fontSize: 12 }} value={m.section} onChange={(e) => setPgSection(m.id, e.target.value)}>
-                          {pgSections.map((s) => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
-                        </select>
+                        {isCustom && (
+                          <input
+                            style={{ ...inputStyle, width: 160, padding: "5px 8px", fontSize: 12 }}
+                            value={m.section}
+                            onChange={(e) => setPgCustomLabel(m.id, e.target.value)}
+                            placeholder="Type a tag…"
+                          />
+                        )}
                       </div>
                       {!m.isCover && (
                         <span onClick={() => setPgCover(m.id)} style={{ fontSize: 11.5, fontWeight: 700, color: "var(--color-primary)", cursor: "pointer", width: "fit-content" }}>
@@ -1095,7 +1150,8 @@ export default function AdminNewPropertyPage() {
                     </div>
                     <span onClick={() => removePgMedia(m.id)} style={{ cursor: "pointer", color: "var(--color-danger)", fontWeight: 800, padding: "0 4px" }}>✕</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

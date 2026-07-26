@@ -208,7 +208,7 @@ function selectFullRows(db: DbClient): any {
       "wifi_included,nearest_coaching_hub,lat,lng," +
       "dealers(name,phone,is_active,role)," +
       "property_units(id,label,capacity,price_per_month,deposit_amount,total_count," +
-      "available_count,has_ac,has_cooler,attached_bath,meals_included,description,sort_order)"
+      "available_count,has_ac,has_cooler,attached_bath,meals_included,description,sort_order,attributes)"
     );
 }
 
@@ -226,14 +226,27 @@ const ADMIN_EDITABLE_FIELDS = [
   "floor_number", "total_floors", "meals_included", "attached_bathroom",
   "parking_available", "wifi_included", "nearest_coaching_hub", "description",
   "is_featured", "is_verified", "tenant_preference",
+  // hostel_meta: full-JSON replace (built client-side from every hostel field,
+  // same shape the create routes write). gallery/videos/img: photo & video
+  // edits (add/remove/reorder/re-tag) resolve to plain string-array replaces
+  // client-side — no different from any other column here.
+  "hostel_meta", "gallery", "videos", "img",
 ] as const;
+
+type UnitEditInput = {
+  id?: unknown; label?: unknown; capacity?: unknown; price_per_month?: unknown;
+  deposit_amount?: unknown; total_count?: unknown; available_count?: unknown;
+  has_ac?: unknown; has_cooler?: unknown; attached_bath?: unknown;
+  meals_included?: unknown; description?: unknown; sort_order?: unknown;
+  attributes?: unknown;
+};
 
 export async function PATCH(req: NextRequest) {
   if (!(await assertAdminFromRequest(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { id: number; action: string; fields?: unknown };
+  let body: { id: number; action: string; fields?: unknown; units?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -253,11 +266,49 @@ export async function PATCH(req: NextRequest) {
     for (const key of ADMIN_EDITABLE_FIELDS) {
       if (key in fields) update[key] = fields[key];
     }
-    if (Object.keys(update).length === 0) {
+
+    // Room/unit variants — full replace (delete then re-insert) rather than a
+    // diff, same as how the create routes write them in one shot. Only acted
+    // on when the caller actually sends a `units` array (PG/Hostel edits);
+    // omitting it leaves existing units untouched (e.g. a plain rent/sale edit).
+    if (Array.isArray(body.units)) {
+      const toInsert = (body.units as UnitEditInput[])
+        .filter((u) => u.label && Number(u.price_per_month) > 0)
+        .map((u, i) => ({
+          property_id: id,
+          label: String(u.label),
+          capacity: Number(u.capacity) || 1,
+          price_per_month: Number(u.price_per_month),
+          deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
+          total_count: Number(u.total_count) || 1,
+          available_count: Math.min(Number(u.available_count) || 1, Number(u.total_count) || 1),
+          has_ac: Boolean(u.has_ac),
+          has_cooler: Boolean(u.has_cooler),
+          attached_bath: Boolean(u.attached_bath),
+          meals_included: Boolean(u.meals_included),
+          description: u.description ? String(u.description) : null,
+          sort_order: Number(u.sort_order ?? i),
+          attributes: u.attributes && typeof u.attributes === "object" ? u.attributes : null,
+        }));
+      // Refuse to wipe existing room types over an empty/invalid submission
+      // (e.g. every label got cleared by mistake) — a PG/Hostel listing with
+      // zero units is a broken listing, so this is never a legitimate edit.
+      if (toInsert.length === 0) {
+        return NextResponse.json({ error: "At least one valid room type (with a label and price) is required." }, { status: 400 });
+      }
+      const { error: delErr } = await db.from("property_units").delete().eq("property_id", id);
+      if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+      const { error: insErr } = await db.from("property_units").insert(toInsert);
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
+
+    if (Object.keys(update).length === 0 && !Array.isArray(body.units)) {
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
-    const { error } = await db.from("properties").update(update).eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (Object.keys(update).length > 0) {
+      const { error } = await db.from("properties").update(update).eq("id", id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   }
 

@@ -110,6 +110,10 @@ export type HostelMeta = {
   usp_text?: string | null;
   photo_tags?: Record<string, string>;
   photo_sections?: Record<string, string>;
+  // Free-typed coaching hub name — only set when nearest_coaching_hub (the
+  // locked enum column) is "Other"; lets the public page show the real name
+  // instead of the literal word "Other".
+  custom_coaching_hub?: string | null;
 };
 
 export type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";

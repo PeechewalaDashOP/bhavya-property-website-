@@ -790,6 +790,14 @@ export default function PropertyDetail({
   const isFull = (availUnit?.available_count ?? -1) === 0;
   const ctaLabel = "Get contact details";
 
+  // "Other" is a locked enum value on nearest_coaching_hub (CLAUDE.md) — the
+  // real name the admin/owner typed lives in hostel_meta.custom_coaching_hub
+  // instead, so the public page never shows the literal word "Other".
+  const coachingHubDisplay =
+    property.nearest_coaching_hub === "Other" && property.hostel_meta?.custom_coaching_hub
+      ? property.hostel_meta.custom_coaching_hub
+      : property.nearest_coaching_hub;
+
   // Highlights: top features as icon-chips
   const highlights: { icon: string; label: string }[] = [];
   if (property.gender_preference && property.gender_preference !== "any") {
@@ -802,7 +810,7 @@ export default function PropertyDetail({
   if (property.wifi_included) highlights.push({ icon: "📶", label: "Free WiFi" });
   if (property.parking_available) highlights.push({ icon: "🚗", label: "Parking" });
   if (property.attached_bathroom) highlights.push({ icon: "🚿", label: "Attached Bath" });
-  if (property.nearest_coaching_hub) highlights.push({ icon: "🎓", label: `Near ${property.nearest_coaching_hub}` });
+  if (coachingHubDisplay) highlights.push({ icon: "🎓", label: `Near ${coachingHubDisplay}` });
   if (property.furnishing_status === "furnished") highlights.push({ icon: "🛋️", label: "Fully Furnished" });
   if (property.furnishing_status === "semi-furnished") highlights.push({ icon: "🛋️", label: "Semi-Furnished" });
   if (property.min_stay_months) highlights.push({ icon: "📅", label: `Min ${property.min_stay_months} Month${property.min_stay_months > 1 ? "s" : ""}` });
@@ -976,7 +984,7 @@ export default function PropertyDetail({
             {/* Badge row */}
             <div className={styles.badgeRow}>
               <span className={styles.typeBadge}>{property.type === "rent" ? "For Rent" : "For Sale"}</span>
-              {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified</span>}
+              {property.is_verified && <span className={`${styles.badge} ${styles.badgeVerified}`}>✓ Verified by Prop100</span>}
               {property.is_featured && <span className={`${styles.badge} ${styles.badgeFeatured}`}>⭐ Featured</span>}
               {property.type === "sale" && <CommissionBadge />}
             </div>
@@ -997,7 +1005,7 @@ export default function PropertyDetail({
             <div className={styles.propTitle}>{capFirst(property.title.split(" | ")[0])}</div>
             <div className={styles.propLoc}>
               📍 {property.loc}, Kota
-              {property.nearest_coaching_hub && ` · 🎓 Near ${property.nearest_coaching_hub}`}
+              {coachingHubDisplay && ` · 🎓 Near ${coachingHubDisplay}`}
             </div>
             {/* Stats row */}
             <div className={styles.statRow}>
@@ -1128,10 +1136,10 @@ export default function PropertyDetail({
                     </span>
                   </div>
                 )}
-                {property.nearest_coaching_hub && (
+                {coachingHubDisplay && (
                   <div className={styles.detailRow}>
                     <span className={styles.detailLabel}>🎓 Nearest Coaching</span>
-                    <span className={styles.detailValue}>{property.nearest_coaching_hub}</span>
+                    <span className={styles.detailValue}>{coachingHubDisplay}</span>
                   </div>
                 )}
               </div>
@@ -1389,8 +1397,8 @@ export default function PropertyDetail({
             {/* Location snippet */}
             <div style={{ marginTop: 16, fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
               📍 {property.loc}, Kota
-              {property.nearest_coaching_hub && (
-                <div>🎓 Near {property.nearest_coaching_hub}</div>
+              {coachingHubDisplay && (
+                <div>🎓 Near {coachingHubDisplay}</div>
               )}
             </div>
 

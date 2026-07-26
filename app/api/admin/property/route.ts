@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     attached_bathroom, parking_available, wifi_included,
     nearest_coaching_hub, features, description,
     photoPaths, videoPaths, units, hostel_meta,
-    lat, lng, owner, tenant_preference,
+    lat, lng, owner, tenant_preference, is_verified,
   } = body as Record<string, unknown>;
 
   if (!type || !ptype || !loc) {
@@ -168,8 +168,8 @@ export async function POST(req: NextRequest) {
     is_approved: true,
     listing_status: "live",
     is_featured: false,
-    is_verified: false,
-    verified: false,
+    is_verified: Boolean(is_verified),
+    verified: Boolean(is_verified),
     photos: photoArr.length,
     posted_days: 0,
     property_status: "available",

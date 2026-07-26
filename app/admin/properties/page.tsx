@@ -6,11 +6,24 @@ import { supabase } from "@/lib/supabase";
 import { LoadingBar } from "@/components/LoadingBar";
 import { fmt } from "@/lib/format";
 import { HostelMeta } from "@/lib/types";
-import { TENANT_PREFERENCES } from "@/lib/constants";
+import { TENANT_PREFERENCES, COACHING_HUBS } from "@/lib/constants";
 import {
   HOUSE_RULE_LABELS, SERVICE_LABELS, COMMON_AMENITY_LABELS,
   TENANT_TYPE_LABELS, PARKING_TYPE_LABELS, gateTimeLabel, noticePeriodLabel,
 } from "@/lib/hostelLabels";
+import {
+  ROOM_CATEGORIES, USER_TYPES, ROOM_FACILITIES, COOLING_TYPES, HOUSE_RULES,
+  TENANT_TYPES, CORE_SERVICES, COMMON_AMENITIES, PARKING_TYPES, ELECTRICITY_OPTIONS,
+  NOTICE_PERIODS, GATE_TIMES, USP_CATEGORIES,
+  type RoomCategoryKey, type UserType, type CoolingType, type ElectricityBilling,
+} from "@/app/dealer/post/types";
+import {
+  buildPhotoLabelOptions, resolvePhotoLabelOption,
+  PHOTO_LABEL_CUSTOM_VALUE,
+} from "@/app/admin/photoTagOptions";
+import { compressImages } from "@/lib/imageCompress";
+import { compressVideos, validateVideoSize } from "@/lib/videoCompress";
+import { uploadFileWithRetry } from "@/lib/upload";
 import styles from "./styles.module.css";
 
 type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
@@ -18,6 +31,11 @@ type StatusFilter = "pending" | "live" | "paused" | "rejected" | "all";
 type Order = "new" | "old" | "price_desc" | "price_asc" | "leads";
 
 const PAGE_SIZE = 20;
+const GENDER_PREF_TO_TARGET: Record<string, "male" | "female" | "both"> = {
+  boys: "male", girls: "female", any: "both",
+};
+
+type UnitAttrs = { occupancy?: string; cooling?: string; facilities?: string[] } | null;
 
 type PropUnit = {
   id: number;
@@ -33,7 +51,109 @@ type PropUnit = {
   meals_included: boolean;
   description: string | null;
   sort_order: number;
+  attributes?: UnitAttrs;
 };
+
+// Room-type editor row — same shape as app/admin/properties/new/page.tsx's
+// UnitRow, so an existing hostel listing edits with the same controls a
+// fresh one is created with (category/cooling/facilities drive `attributes`).
+type EditUnitRow = {
+  id: string;
+  category: RoomCategoryKey;
+  customLabel: string;
+  label: string;
+  capacity: string;
+  price_per_month: string;
+  deposit_amount: string;
+  total_count: string;
+  available_count: string;
+  coolingType: CoolingType;
+  facilities: string[];
+  meals_included: boolean;
+  description: string;
+};
+
+function editUnitId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function unitToEditRow(u: PropUnit): EditUnitRow {
+  const attrs = u.attributes ?? {};
+  const category = (ROOM_CATEGORIES.some((c) => c.key === attrs.occupancy) ? attrs.occupancy : "other") as RoomCategoryKey;
+  const coolingType = (["ac", "cooler", "none"].includes(attrs.cooling ?? "") ? attrs.cooling : (u.has_ac ? "ac" : u.has_cooler ? "cooler" : "none")) as CoolingType;
+  const facilities = Array.isArray(attrs.facilities) ? attrs.facilities : (u.attached_bath ? ["washroom"] : []);
+  return {
+    id: editUnitId(), category, customLabel: category === "other" ? u.label : "",
+    label: u.label, capacity: String(u.capacity), price_per_month: String(u.price_per_month),
+    deposit_amount: u.deposit_amount != null ? String(u.deposit_amount) : "",
+    total_count: String(u.total_count), available_count: String(u.available_count),
+    coolingType, facilities, meals_included: u.meals_included, description: u.description ?? "",
+  };
+}
+
+function emptyEditUnit(): EditUnitRow {
+  return {
+    id: editUnitId(), category: "single", customLabel: "", label: "", capacity: "1",
+    price_per_month: "", deposit_amount: "", total_count: "1", available_count: "",
+    coolingType: "none", facilities: [], meals_included: false, description: "",
+  };
+}
+
+// Photo item — "existing" wraps an already-uploaded gallery URL (with its
+// current tag/section pulled from hostel_meta), "new" wraps a File picked
+// during this edit session that still needs uploading on save.
+type EditPhotoItem =
+  | { id: string; kind: "existing"; url: string; tag: string; section: string; isCover: boolean }
+  | { id: string; kind: "new"; file: File; previewUrl: string; tag: string; section: string; isCover: boolean; uploadedUrl?: string };
+
+function editPhotoId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+type HostelEditState = {
+  pg_name: string; user_type: UserType; address: string; pincode: string; landmark: string;
+  operational_since: string; present_on_floor: string; tenant_types: string[]; house_rules: string[];
+  notice_period: string; gate_timing_enabled: boolean; gate_closing_time: string; services: string[];
+  electricity: "" | ElectricityBilling; common_amenities: string[]; parking_enabled: boolean;
+  parking_types: string[]; usp_category: string; usp_text: string; custom_coaching_hub: string;
+};
+
+function emptyHostelEdit(): HostelEditState {
+  return {
+    pg_name: "", user_type: "owner", address: "", pincode: "", landmark: "",
+    operational_since: "", present_on_floor: "", tenant_types: [], house_rules: [],
+    notice_period: "30", gate_timing_enabled: false, gate_closing_time: "22:00", services: [],
+    electricity: "", common_amenities: [], parking_enabled: false,
+    parking_types: [], usp_category: "", usp_text: "", custom_coaching_hub: "",
+  };
+}
+
+function hostelMetaToEditState(hm: HostelMeta | null): HostelEditState {
+  const base = emptyHostelEdit();
+  if (!hm) return base;
+  return {
+    pg_name: hm.pg_name ?? "",
+    user_type: hm.user_type ?? "owner",
+    address: hm.address ?? "",
+    pincode: hm.pincode ?? "",
+    landmark: hm.landmark ?? "",
+    operational_since: hm.operational_since ?? "",
+    present_on_floor: hm.present_on_floor ?? "",
+    tenant_types: hm.tenant_types ?? [],
+    house_rules: hm.house_rules ?? [],
+    notice_period: hm.notice_period ?? "30",
+    gate_timing_enabled: !!hm.gate_timing_enabled,
+    gate_closing_time: hm.gate_closing_time ?? "22:00",
+    services: hm.services ?? [],
+    electricity: hm.electricity ?? "",
+    common_amenities: hm.common_amenities ?? [],
+    parking_enabled: !!hm.parking_enabled,
+    parking_types: hm.parking_types ?? [],
+    usp_category: hm.usp_category ?? "",
+    usp_text: hm.usp_text ?? "",
+    custom_coaching_hub: hm.custom_coaching_hub ?? "",
+  };
+}
 
 type PropRow = {
   id: number;
@@ -198,6 +318,16 @@ function PropertiesContent() {
   const [editTenantPref, setEditTenantPref] = useState<string[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState("");
+  const [editUploadMsg, setEditUploadMsg] = useState("");
+
+  // PG/Hostel-only edit state — full parity with the "Add Listing" form's
+  // hostel-specific fields, room-type editor, and tagged/orderable photos.
+  const [editHostel, setEditHostel] = useState<HostelEditState>(emptyHostelEdit());
+  const [editUnits, setEditUnits] = useState<EditUnitRow[]>([]);
+  const [editPhotos, setEditPhotos] = useState<EditPhotoItem[]>([]);
+  const [editVideos, setEditVideos] = useState<string[]>([]);
+  const [editNewVideos, setEditNewVideos] = useState<File[]>([]);
+  const [editVideoErr, setEditVideoErr] = useState("");
   const [flashedId, setFlashedId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
@@ -323,11 +453,111 @@ function PropertiesContent() {
   function toggleEditTenantPref(t: string) {
     setEditTenantPref((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   }
+  function isPgProp(p: PropRow) {
+    return p.ptype === "Hostel" || p.ptype === "PG" || !!p.hostel_meta;
+  }
+  function setHostelField<K extends keyof HostelEditState>(key: K, value: HostelEditState[K]) {
+    setEditHostel((prev) => ({ ...prev, [key]: value }));
+  }
+  function toggleHostelList(key: "tenant_types" | "house_rules" | "services" | "common_amenities" | "parking_types", value: string) {
+    setEditHostel((prev) => ({
+      ...prev,
+      [key]: prev[key].includes(value) ? prev[key].filter((x) => x !== value) : [...prev[key], value],
+    }));
+  }
+  function updateEditUnit(id: string, patch: Partial<EditUnitRow>) {
+    setEditUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+  }
+  function setEditUnitCategory(id: string, category: RoomCategoryKey) {
+    const cat = ROOM_CATEGORIES.find((c) => c.key === category);
+    setEditUnits((prev) => prev.map((u) => (u.id === id
+      ? { ...u, category, label: u.label || (category === "other" ? "" : `${cat?.label ?? ""} Room`) }
+      : u)));
+  }
+  function toggleEditUnitFacility(id: string, key: string) {
+    setEditUnits((prev) => prev.map((u) => (u.id === id ? { ...u, facilities: u.facilities.includes(key) ? u.facilities.filter((x) => x !== key) : [...u.facilities, key] } : u)));
+  }
+  function addEditUnit() {
+    setEditUnits((prev) => [...prev, emptyEditUnit()]);
+  }
+  function removeEditUnit(id: string) {
+    setEditUnits((prev) => (prev.length > 1 ? prev.filter((u) => u.id !== id) : prev));
+  }
+  function addEditPhotos(files: FileList | null) {
+    if (!files) return;
+    const arr: EditPhotoItem[] = Array.from(files).map((file) => ({
+      id: editPhotoId(), kind: "new", file, previewUrl: URL.createObjectURL(file),
+      tag: "", section: "", isCover: false,
+    }));
+    setEditPhotos((prev) => [...prev, ...arr]);
+  }
+  function removeEditPhoto(id: string) {
+    setEditPhotos((prev) => {
+      const item = prev.find((x) => x.id === id);
+      if (item && item.kind === "new") URL.revokeObjectURL(item.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+  }
+  function setEditPhotoCover(id: string) {
+    setEditPhotos((prev) => prev.map((x) => ({ ...x, isCover: x.id === id })));
+  }
+  function setEditPhotoLabelOption(id: string, value: string, options: ReturnType<typeof buildPhotoLabelOptions>) {
+    if (value === PHOTO_LABEL_CUSTOM_VALUE) {
+      setEditPhotos((prev) => prev.map((x) => (x.id === id ? { ...x, tag: "", section: "" } : x)));
+      return;
+    }
+    const opt = options.find((o) => o.value === value);
+    if (!opt) return;
+    setEditPhotos((prev) => prev.map((x) => (x.id === id ? { ...x, tag: opt.tag, section: opt.section } : x)));
+  }
+  function setEditPhotoCustomLabel(id: string, text: string) {
+    setEditPhotos((prev) => prev.map((x) => (x.id === id ? { ...x, tag: "", section: text } : x)));
+  }
+  function moveEditPhoto(id: string, dir: -1 | 1) {
+    setEditPhotos((prev) => {
+      const i = prev.findIndex((x) => x.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+  function addEditVideos(files: FileList | null) {
+    if (!files) return;
+    const arr = Array.from(files);
+    for (const f of arr) {
+      const msg = validateVideoSize(f);
+      if (msg) { setEditVideoErr(msg); return; }
+    }
+    setEditVideoErr("");
+    setEditNewVideos((prev) => [...prev, ...arr]);
+  }
 
   function openEdit(p: PropRow) {
     setEditingId(p.id);
     setEditErr("");
     setEditTenantPref(p.tenant_preference ?? []);
+    if (isPgProp(p)) {
+      setEditHostel(hostelMetaToEditState(p.hostel_meta));
+      setEditUnits((p.property_units ?? []).map(unitToEditRow));
+      const gallery = p.gallery ?? [];
+      const tagMap = p.hostel_meta?.photo_tags ?? {};
+      const sectionMap = p.hostel_meta?.photo_sections ?? {};
+      setEditPhotos(gallery.map((url, i) => ({
+        id: editPhotoId(), kind: "existing", url,
+        tag: tagMap[url] ?? "", section: sectionMap[url] ?? "", isCover: i === 0,
+      })));
+      setEditVideos(p.videos ?? []);
+      setEditNewVideos([]);
+      setEditVideoErr("");
+    } else {
+      setEditHostel(emptyHostelEdit());
+      setEditUnits([]);
+      setEditPhotos([]);
+      setEditVideos([]);
+      setEditNewVideos([]);
+    }
     setEditForm({
       title: p.title ?? "",
       price: String((p.type === "rent" ? p.rent_per_month : p.price) ?? ""),
@@ -354,40 +584,181 @@ function PropertiesContent() {
     if (!supabase) return;
     setEditSaving(true);
     setEditErr("");
+    setEditUploadMsg("");
     const numOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
-    const fields: Record<string, unknown> = {
-      title: editForm.title,
-      [p.type === "rent" ? "rent_per_month" : "price"]: Number(editForm.price) || 0,
-      deposit_amount: numOrNull(editForm.deposit_amount as string),
-      sqft: numOrNull(editForm.sqft as string),
-      furnishing_status: editForm.furnishing_status || null,
-      gender_preference: editForm.gender_preference || null,
-      available_from: editForm.available_from || null,
-      min_stay_months: numOrNull(editForm.min_stay_months as string),
-      floor_number: numOrNull(editForm.floor_number as string),
-      total_floors: numOrNull(editForm.total_floors as string),
-      nearest_coaching_hub: editForm.nearest_coaching_hub || null,
-      description: editForm.description || null,
-      meals_included: !!editForm.meals_included,
-      attached_bathroom: !!editForm.attached_bathroom,
-      parking_available: !!editForm.parking_available,
-      wifi_included: !!editForm.wifi_included,
-      is_featured: !!editForm.is_featured,
-      is_verified: !!editForm.is_verified,
-      tenant_preference: editTenantPref,
-    };
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch("/api/admin/properties", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session!.access_token}` },
-      body: JSON.stringify({ id: p.id, action: "edit", fields }),
-    });
-    const data = await res.json().catch(() => ({}));
+    const isPg = isPgProp(p);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authHeader = { Authorization: `Bearer ${session!.access_token}` };
+
+      let finalGallery: string[] = editPhotos.filter((i) => i.kind === "existing").map((i) => (i as { url: string }).url);
+      let finalVideos: string[] = [...editVideos];
+      let photoTagMap: Record<string, string> = {};
+      let photoSectionMap: Record<string, string> = {};
+
+      if (isPg) {
+        const newPhotoItems = editPhotos.filter((i) => i.kind === "new") as Extract<EditPhotoItem, { kind: "new" }>[];
+        const newPhotoFiles = newPhotoItems.map((i) => i.file);
+
+        if (newPhotoFiles.length > 0 || editNewVideos.length > 0) {
+          setEditUploadMsg("Compressing media…");
+          const [compPhotos, compVideos] = await Promise.all([compressImages(newPhotoFiles), compressVideos(editNewVideos)]);
+          const allFiles = [
+            ...compPhotos.map((f) => ({ name: f.name, type: f.type, category: "photo" as const })),
+            ...compVideos.map((f) => ({ name: f.name, type: f.type, category: "video" as const })),
+          ];
+          setEditUploadMsg("Preparing upload…");
+          const prepRes = await fetch("/api/admin/property/prepare-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeader },
+            body: JSON.stringify({ files: allFiles }),
+          });
+          if (!prepRes.ok) {
+            const d = await prepRes.json().catch(() => ({}));
+            throw new Error(d.error ?? "Could not prepare upload.");
+          }
+          const prep = await prepRes.json();
+          const uploadUrls: { signedUrl: string; publicUrl: string }[] = prep.files;
+          const allFileObjs = [...compPhotos, ...compVideos];
+          const refreshSignedUrl = async (meta: (typeof allFiles)[number]) => {
+            const r = await fetch("/api/admin/property/prepare-upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...authHeader },
+              body: JSON.stringify({ files: [meta] }),
+            });
+            if (!r.ok) throw new Error("Could not retry upload — please try again.");
+            const d = await r.json();
+            return d.files[0].signedUrl as string;
+          };
+          const newPhotoUrls: string[] = [];
+          const newVideoUrls: string[] = [];
+          for (let i = 0; i < uploadUrls.length; i++) {
+            const { signedUrl, publicUrl } = uploadUrls[i];
+            const isPhoto = i < compPhotos.length;
+            setEditUploadMsg(`Uploading ${isPhoto ? "photo" : "video"} ${i + 1}…`);
+            await uploadFileWithRetry(signedUrl, allFileObjs[i], () => {}, () => refreshSignedUrl(allFiles[i]));
+            if (isPhoto) newPhotoUrls.push(publicUrl);
+            else newVideoUrls.push(publicUrl);
+          }
+          // Map new items back to their uploaded URL, in the same order they
+          // were uploaded (compressImages/compressVideos preserve input order).
+          newPhotoItems.forEach((item, idx) => { item.uploadedUrl = newPhotoUrls[idx]; });
+          finalVideos = [...editVideos, ...newVideoUrls.filter(Boolean)];
+        }
+
+        setEditUploadMsg("Saving changes…");
+        const urlById = new Map<string, string>();
+        for (const item of editPhotos) {
+          if (item.kind === "existing") urlById.set(item.id, item.url);
+          else urlById.set(item.id, item.uploadedUrl ?? "");
+        }
+        const orderedUrls = editPhotos.map((item) => urlById.get(item.id)).filter((u): u is string => !!u);
+        const coverItem = editPhotos.find((i) => i.isCover);
+        const coverUrl = coverItem ? urlById.get(coverItem.id) : undefined;
+        finalGallery = coverUrl ? [coverUrl, ...orderedUrls.filter((u) => u !== coverUrl)] : orderedUrls;
+
+        for (const item of editPhotos) {
+          const url = urlById.get(item.id);
+          if (!url) continue;
+          if (item.tag) photoTagMap[url] = item.tag;
+          if (item.section) photoSectionMap[url] = item.section;
+        }
+      }
+
+      const pgValidUnits = editUnits.filter((u) => u.label && Number(u.price_per_month) > 0);
+
+      const fields: Record<string, unknown> = {
+        title: editForm.title,
+        [p.type === "rent" ? "rent_per_month" : "price"]: Number(editForm.price) || 0,
+        deposit_amount: numOrNull(editForm.deposit_amount as string),
+        sqft: numOrNull(editForm.sqft as string),
+        furnishing_status: editForm.furnishing_status || null,
+        gender_preference: editForm.gender_preference || null,
+        available_from: editForm.available_from || null,
+        min_stay_months: numOrNull(editForm.min_stay_months as string),
+        floor_number: numOrNull(editForm.floor_number as string),
+        total_floors: numOrNull(editForm.total_floors as string),
+        nearest_coaching_hub: editForm.nearest_coaching_hub || null,
+        description: editForm.description || null,
+        meals_included: !!editForm.meals_included,
+        attached_bathroom: isPg ? pgValidUnits.some((u) => u.facilities.includes("washroom")) : !!editForm.attached_bathroom,
+        parking_available: isPg ? editHostel.parking_enabled : !!editForm.parking_available,
+        wifi_included: isPg ? editHostel.common_amenities.includes("wifi") : !!editForm.wifi_included,
+        is_featured: !!editForm.is_featured,
+        is_verified: !!editForm.is_verified,
+        tenant_preference: editTenantPref,
+        ...(isPg ? {
+          gallery: finalGallery,
+          videos: finalVideos,
+          img: finalGallery[0] ?? null,
+          hostel_meta: {
+            pg_name: editHostel.pg_name.trim() || undefined,
+            user_type: editHostel.user_type,
+            address: editHostel.address.trim(),
+            pincode: editHostel.pincode || null,
+            landmark: editHostel.landmark.trim() || null,
+            operational_since: editHostel.operational_since || null,
+            present_on_floor: editHostel.present_on_floor.trim() || null,
+            room_categories: Array.from(new Set(pgValidUnits.map((u) => u.category))),
+            target_gender: GENDER_PREF_TO_TARGET[editForm.gender_preference as string] ?? "both",
+            tenant_types: editHostel.tenant_types,
+            house_rules: editHostel.house_rules,
+            notice_period: editHostel.notice_period,
+            gate_timing_enabled: editHostel.gate_timing_enabled,
+            gate_closing_time: editHostel.gate_timing_enabled ? editHostel.gate_closing_time : null,
+            services: editHostel.services,
+            food_provided: !!editForm.meals_included,
+            electricity: editHostel.electricity || null,
+            common_amenities: editHostel.common_amenities,
+            parking_enabled: editHostel.parking_enabled,
+            parking_types: editHostel.parking_types,
+            usp_category: editHostel.usp_category || null,
+            usp_text: editHostel.usp_text.trim() || null,
+            photo_tags: photoTagMap,
+            photo_sections: photoSectionMap,
+            custom_coaching_hub: editForm.nearest_coaching_hub === "Other" ? editHostel.custom_coaching_hub.trim() || null : null,
+          },
+        } : {}),
+      };
+
+      const unitsPayload = isPg
+        ? pgValidUnits.map((u, i) => {
+            const totalCount = Number(u.total_count) || 1;
+            const availCount = u.available_count.trim() ? Number(u.available_count) : totalCount;
+            return {
+              label: u.label,
+              capacity: Number(u.capacity) || 1,
+              price_per_month: Number(u.price_per_month),
+              deposit_amount: u.deposit_amount ? Number(u.deposit_amount) : null,
+              total_count: totalCount,
+              available_count: Math.min(availCount, totalCount),
+              has_ac: u.coolingType === "ac",
+              has_cooler: u.coolingType === "cooler",
+              attached_bath: u.facilities.includes("washroom"),
+              meals_included: u.meals_included,
+              description: u.description || null,
+              sort_order: i,
+              attributes: { occupancy: u.category, cooling: u.coolingType, facilities: u.facilities },
+            };
+          })
+        : undefined;
+
+      const res = await fetch("/api/admin/properties", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ id: p.id, action: "edit", fields, ...(unitsPayload ? { units: unitsPayload } : {}) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to save changes");
+      setEditingId(null);
+      flash(p.id);
+      await fetchProps(0, false);
+    } catch (e) {
+      setEditErr(e instanceof Error ? e.message : "Failed to save changes");
+    }
     setEditSaving(false);
-    if (!res.ok) { setEditErr(data.error ?? "Failed to save changes"); return; }
-    setEditingId(null);
-    flash(p.id);
-    await fetchProps(0, false);
+    setEditUploadMsg("");
   }
 
   async function copyLink(p: PropRow) {
@@ -599,6 +970,8 @@ function PropertiesContent() {
             const isOpen = expanded === p.id;
             const wait = p.listing_status === "pending" ? waitingLabel(p.created_at) : null;
             const leads = leadCounts[p.id] ?? 0;
+            const editUsedCategories = editingId === p.id ? Array.from(new Set(editUnits.map((u) => u.category))) : [];
+            const editPhotoOptions = editingId === p.id ? buildPhotoLabelOptions(editUsedCategories) : [];
             return (
               <div key={p.id} className={`${styles.propCard} ${flashedId === p.id ? styles.propCardFlash : ""}`}>
                 {/* Card summary — tap to expand */}
@@ -758,10 +1131,18 @@ function PropertiesContent() {
                               <div style={editLabelStyle}>Nearest coaching</div>
                               <select value={editForm.nearest_coaching_hub as string} onChange={(e) => setField("nearest_coaching_hub", e.target.value)} style={editInputStyle}>
                                 <option value="">—</option>
-                                {["Allen", "Resonance", "FIITJEE", "Vibrant", "Motion", "Other"].map((h) => (
+                                {COACHING_HUBS.map((h) => (
                                   <option key={h} value={h}>{h}</option>
                                 ))}
                               </select>
+                              {isPgProp(p) && editForm.nearest_coaching_hub === "Other" && (
+                                <input
+                                  style={{ ...editInputStyle, marginTop: 6 }}
+                                  value={editHostel.custom_coaching_hub}
+                                  onChange={(e) => setHostelField("custom_coaching_hub", e.target.value)}
+                                  placeholder="Type the actual coaching name"
+                                />
+                              )}
                             </label>
                           </div>
                           <label style={{ display: "block", marginBottom: 10 }}>
@@ -776,11 +1157,9 @@ function PropertiesContent() {
                           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 12, fontSize: 13 }}>
                             {([
                               ["meals_included", "Meals included"],
-                              ["attached_bathroom", "Attached bath"],
-                              ["parking_available", "Parking"],
-                              ["wifi_included", "WiFi"],
+                              ...(isPgProp(p) ? [] : [["attached_bathroom", "Attached bath"], ["parking_available", "Parking"], ["wifi_included", "WiFi"]]),
                               ["is_featured", "Featured"],
-                              ["is_verified", "Verified"],
+                              ["is_verified", "✓ Verified by Prop100"],
                             ] as const).map(([key, label]) => (
                               <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                                 <input type="checkbox" checked={!!editForm[key]} onChange={(e) => setField(key, e.target.checked)} />
@@ -788,6 +1167,332 @@ function PropertiesContent() {
                               </label>
                             ))}
                           </div>
+                          {isPgProp(p) && (
+                            <>
+                            <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: -8, marginBottom: 12 }}>
+                              Attached bath / Parking / WiFi are set automatically below from room facilities, parking, and common amenities.
+                            </p>
+
+                            {/* Owner type + address + operational details */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Owner is the</div>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                                {USER_TYPES.map((u) => (
+                                  <button key={u.key} onClick={() => setHostelField("user_type", u.key)}
+                                    style={{ flex: 1, padding: "6px 6px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                                      border: editHostel.user_type === u.key ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                      background: editHostel.user_type === u.key ? "rgba(15,118,110,0.08)" : "#fff",
+                                      color: editHostel.user_type === u.key ? "var(--color-primary)" : "var(--ink)" }}>
+                                    {u.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <label style={{ display: "block", marginBottom: 8 }}>
+                                <div style={editLabelStyle}>PG / Hostel name</div>
+                                <input value={editHostel.pg_name} onChange={(e) => setHostelField("pg_name", e.target.value)} style={editInputStyle} />
+                              </label>
+                              <label style={{ display: "block", marginBottom: 8 }}>
+                                <div style={editLabelStyle}>Full address</div>
+                                <textarea value={editHostel.address} onChange={(e) => setHostelField("address", e.target.value)} rows={2} style={{ ...editInputStyle, resize: "vertical", fontFamily: "inherit" }} />
+                              </label>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
+                                <label>
+                                  <div style={editLabelStyle}>Pincode</div>
+                                  <input value={editHostel.pincode} onChange={(e) => setHostelField("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} style={editInputStyle} />
+                                </label>
+                                <label>
+                                  <div style={editLabelStyle}>Landmark</div>
+                                  <input value={editHostel.landmark} onChange={(e) => setHostelField("landmark", e.target.value)} style={editInputStyle} />
+                                </label>
+                                <label>
+                                  <div style={editLabelStyle}>Running since</div>
+                                  <input value={editHostel.operational_since} onChange={(e) => setHostelField("operational_since", e.target.value)} style={editInputStyle} placeholder="e.g. 2019" />
+                                </label>
+                                <label>
+                                  <div style={editLabelStyle}>Present on floor</div>
+                                  <input value={editHostel.present_on_floor} onChange={(e) => setHostelField("present_on_floor", e.target.value)} style={editInputStyle} placeholder="e.g. 1st, 2nd" />
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Room types */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Room types</div>
+                              {editUnits.map((u) => (
+                                <div key={u.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8, marginBottom: 8, background: "var(--bg)" }}>
+                                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                                    {editUnits.length > 1 && (
+                                      <span onClick={() => removeEditUnit(u.id)} style={{ fontSize: 11, color: "var(--color-danger)", cursor: "pointer", fontWeight: 700 }}>Remove</span>
+                                    )}
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8, marginBottom: 8 }}>
+                                    <label>
+                                      <div style={editLabelStyle}>Category</div>
+                                      <select value={u.category} onChange={(e) => setEditUnitCategory(u.id, e.target.value as RoomCategoryKey)} style={editInputStyle}>
+                                        {ROOM_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                                      </select>
+                                    </label>
+                                    <label>
+                                      <div style={editLabelStyle}>Label</div>
+                                      <input value={u.label} onChange={(e) => updateEditUnit(u.id, { label: e.target.value })} style={editInputStyle} />
+                                    </label>
+                                    <label>
+                                      <div style={editLabelStyle}>Price/month (₹)</div>
+                                      <input type="number" value={u.price_per_month} onChange={(e) => updateEditUnit(u.id, { price_per_month: e.target.value })} style={editInputStyle} />
+                                    </label>
+                                    <label>
+                                      <div style={editLabelStyle}>Security Deposit (₹)</div>
+                                      <input type="number" value={u.deposit_amount} onChange={(e) => updateEditUnit(u.id, { deposit_amount: e.target.value })} style={editInputStyle} />
+                                    </label>
+                                    <label>
+                                      <div style={editLabelStyle}>Capacity</div>
+                                      <input type="number" min={1} value={u.capacity} onChange={(e) => updateEditUnit(u.id, { capacity: e.target.value })} style={editInputStyle} />
+                                    </label>
+                                    <label>
+                                      <div style={editLabelStyle}>Total rooms</div>
+                                      <input type="number" min={1} value={u.total_count} onChange={(e) => updateEditUnit(u.id, { total_count: e.target.value })} style={editInputStyle} />
+                                    </label>
+                                    <label>
+                                      <div style={editLabelStyle}>Available now</div>
+                                      <input type="number" min={0} value={u.available_count} onChange={(e) => updateEditUnit(u.id, { available_count: e.target.value })} style={editInputStyle} placeholder="Blank = all available" />
+                                    </label>
+                                  </div>
+                                  <div style={{ marginBottom: 6 }}>
+                                    <div style={editLabelStyle}>Cooling</div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      {COOLING_TYPES.map((c) => (
+                                        <span key={c.key} onClick={() => updateEditUnit(u.id, { coolingType: c.key })}
+                                          style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                            border: u.coolingType === c.key ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                            background: u.coolingType === c.key ? "rgba(15,118,110,0.08)" : "#fff",
+                                            color: u.coolingType === c.key ? "var(--color-primary)" : "var(--muted)" }}>
+                                          {c.icon} {c.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div style={{ marginBottom: 6 }}>
+                                    <div style={editLabelStyle}>What&apos;s inside</div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      {ROOM_FACILITIES.map((f) => (
+                                        <span key={f.key} onClick={() => toggleEditUnitFacility(u.id, f.key)}
+                                          style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                            border: u.facilities.includes(f.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                            background: u.facilities.includes(f.key) ? "rgba(15,118,110,0.08)" : "#fff",
+                                            color: u.facilities.includes(f.key) ? "var(--color-primary)" : "var(--muted)" }}>
+                                          {f.icon} {f.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={u.meals_included} onChange={(e) => updateEditUnit(u.id, { meals_included: e.target.checked })} />
+                                    Meals included in this rent
+                                  </label>
+                                </div>
+                              ))}
+                              <button onClick={addEditUnit} style={{ fontSize: 12, fontWeight: 700, color: "var(--color-primary)", background: "rgba(15,118,110,0.08)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
+                                + Add another room type
+                              </button>
+                            </div>
+
+                            {/* Who can stay + house rules */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Tenant type</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                                {TENANT_TYPES.map((t) => (
+                                  <span key={t.key} onClick={() => toggleHostelList("tenant_types", t.key)}
+                                    style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                      border: editHostel.tenant_types.includes(t.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                      background: editHostel.tenant_types.includes(t.key) ? "rgba(15,118,110,0.08)" : "#fff",
+                                      color: editHostel.tenant_types.includes(t.key) ? "var(--color-primary)" : "var(--muted)" }}>
+                                    {t.label}
+                                  </span>
+                                ))}
+                              </div>
+                              <div style={editLabelStyle}>House rules</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {HOUSE_RULES.map((r) => (
+                                  <span key={r.key} onClick={() => toggleHostelList("house_rules", r.key)}
+                                    style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                      border: editHostel.house_rules.includes(r.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                      background: editHostel.house_rules.includes(r.key) ? "rgba(15,118,110,0.08)" : "#fff",
+                                      color: editHostel.house_rules.includes(r.key) ? "var(--color-primary)" : "var(--muted)" }}>
+                                    {r.label}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Timings, services, electricity */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 10 }}>
+                                <label>
+                                  <div style={editLabelStyle}>Notice period</div>
+                                  <select value={editHostel.notice_period} onChange={(e) => setHostelField("notice_period", e.target.value)} style={editInputStyle}>
+                                    {NOTICE_PERIODS.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}
+                                  </select>
+                                </label>
+                                <label>
+                                  <div style={editLabelStyle}>Electricity</div>
+                                  <select value={editHostel.electricity} onChange={(e) => setHostelField("electricity", e.target.value as "" | ElectricityBilling)} style={editInputStyle}>
+                                    <option value="">—</option>
+                                    {ELECTRICITY_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.icon} {o.label}</option>)}
+                                  </select>
+                                </label>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                <input type="checkbox" checked={editHostel.gate_timing_enabled} onChange={(e) => setHostelField("gate_timing_enabled", e.target.checked)} />
+                                <span style={{ fontSize: 12.5 }}>Gate closes at night</span>
+                              </div>
+                              {editHostel.gate_timing_enabled && (
+                                <div style={{ marginBottom: 10, maxWidth: 220 }}>
+                                  <select
+                                    value={GATE_TIMES.some((t) => t.value === editHostel.gate_closing_time) ? editHostel.gate_closing_time : "custom"}
+                                    onChange={(e) => setHostelField("gate_closing_time", e.target.value === "custom" ? "" : e.target.value)}
+                                    style={editInputStyle}
+                                  >
+                                    {GATE_TIMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    <option value="custom">Custom…</option>
+                                  </select>
+                                  {!GATE_TIMES.some((t) => t.value === editHostel.gate_closing_time) && (
+                                    <input type="time" style={{ ...editInputStyle, marginTop: 6 }} value={editHostel.gate_closing_time} onChange={(e) => setHostelField("gate_closing_time", e.target.value)} />
+                                  )}
+                                </div>
+                              )}
+                              <div style={editLabelStyle}>Services included</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {CORE_SERVICES.map((s) => (
+                                  <span key={s.key} onClick={() => toggleHostelList("services", s.key)}
+                                    style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                      border: editHostel.services.includes(s.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                      background: editHostel.services.includes(s.key) ? "rgba(15,118,110,0.08)" : "#fff",
+                                      color: editHostel.services.includes(s.key) ? "var(--color-primary)" : "var(--muted)" }}>
+                                    {s.icon} {s.label}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Common amenities + parking */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Common area amenities</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6, marginBottom: 10 }}>
+                                {COMMON_AMENITIES.map((a) => (
+                                  <label key={a.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={editHostel.common_amenities.includes(a.key)} onChange={() => toggleHostelList("common_amenities", a.key)} />
+                                    {a.icon} {a.label}
+                                  </label>
+                                ))}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                <input type="checkbox" checked={editHostel.parking_enabled} onChange={(e) => setHostelField("parking_enabled", e.target.checked)} />
+                                <span style={{ fontSize: 12.5, fontWeight: 700 }}>Parking available</span>
+                              </div>
+                              {editHostel.parking_enabled && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                  {PARKING_TYPES.map((pt) => (
+                                    <span key={pt.key} onClick={() => toggleHostelList("parking_types", pt.key)}
+                                      style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 20, cursor: "pointer", fontWeight: 600,
+                                        border: editHostel.parking_types.includes(pt.key) ? "1.5px solid var(--color-primary)" : "1px solid var(--line)",
+                                        background: editHostel.parking_types.includes(pt.key) ? "rgba(15,118,110,0.08)" : "#fff",
+                                        color: editHostel.parking_types.includes(pt.key) ? "var(--color-primary)" : "var(--muted)" }}>
+                                      {pt.icon} {pt.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* USP */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
+                                <label>
+                                  <div style={editLabelStyle}>Strongest selling point</div>
+                                  <select value={editHostel.usp_category} onChange={(e) => setHostelField("usp_category", e.target.value)} style={editInputStyle}>
+                                    <option value="">Select category…</option>
+                                    {USP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                </label>
+                                {editHostel.usp_category && (
+                                  <label>
+                                    <div style={editLabelStyle}>Details</div>
+                                    <input value={editHostel.usp_text} onChange={(e) => setHostelField("usp_text", e.target.value)} style={editInputStyle} maxLength={100} />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Photos */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Photos</div>
+                              <label style={{ display: "inline-block", fontSize: 12.5, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "7px 12px", cursor: "pointer", marginBottom: 10 }}>
+                                📷 Add photos ({editPhotos.length})
+                                <input type="file" accept="image/*" multiple hidden onChange={(e) => { addEditPhotos(e.target.files); e.target.value = ""; }} />
+                              </label>
+                              {editPhotos.length > 0 && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                  {editPhotos.map((m, i) => {
+                                    const optionValue = resolvePhotoLabelOption(editPhotoOptions, m.tag, m.section);
+                                    const isCustom = optionValue === PHOTO_LABEL_CUSTOM_VALUE;
+                                    const previewSrc = m.kind === "existing" ? m.url : m.previewUrl;
+                                    return (
+                                      <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "center", border: "1px solid var(--line)", borderRadius: 8, padding: 6, background: "var(--bg)" }}>
+                                        <div style={{ position: "relative", flexShrink: 0 }}>
+                                          <img src={previewSrc} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6 }} />
+                                          {m.isCover && <span style={{ position: "absolute", top: -6, left: -6, fontSize: 9, fontWeight: 800, background: "var(--color-primary)", color: "#fff", borderRadius: 8, padding: "1px 5px" }}>★</span>}
+                                        </div>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
+                                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                            <select style={{ ...editInputStyle, width: "auto", padding: "4px 6px", fontSize: 11 }} value={optionValue} onChange={(e) => setEditPhotoLabelOption(m.id, e.target.value, editPhotoOptions)}>
+                                              {editPhotoOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                            </select>
+                                            {isCustom && (
+                                              <input style={{ ...editInputStyle, width: 120, padding: "4px 6px", fontSize: 11 }} value={m.section} onChange={(e) => setEditPhotoCustomLabel(m.id, e.target.value)} placeholder="Custom tag…" />
+                                            )}
+                                          </div>
+                                          {!m.isCover && (
+                                            <span onClick={() => setEditPhotoCover(m.id)} style={{ fontSize: 11, fontWeight: 700, color: "var(--color-primary)", cursor: "pointer" }}>Set as cover</span>
+                                          )}
+                                        </div>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                          <button onClick={() => moveEditPhoto(m.id, -1)} disabled={i === 0} style={{ fontSize: 11, padding: "1px 6px", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.35 : 1, border: "1px solid var(--line)", borderRadius: 5, background: "#fff" }}>↑</button>
+                                          <button onClick={() => moveEditPhoto(m.id, 1)} disabled={i === editPhotos.length - 1} style={{ fontSize: 11, padding: "1px 6px", cursor: i === editPhotos.length - 1 ? "default" : "pointer", opacity: i === editPhotos.length - 1 ? 0.35 : 1, border: "1px solid var(--line)", borderRadius: 5, background: "#fff" }}>↓</button>
+                                        </div>
+                                        <span onClick={() => removeEditPhoto(m.id)} style={{ cursor: "pointer", color: "var(--color-danger)", fontWeight: 800, padding: "0 4px" }}>✕</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Videos */}
+                            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <div style={editLabelStyle}>Videos</div>
+                              <label style={{ display: "inline-block", fontSize: 12.5, fontWeight: 700, color: "var(--color-primary)", border: "1.5px dashed var(--color-primary)", borderRadius: 8, padding: "7px 12px", cursor: "pointer", marginBottom: 8 }}>
+                                🎥 Add videos
+                                <input type="file" accept="video/*" multiple hidden onChange={(e) => { addEditVideos(e.target.files); e.target.value = ""; }} />
+                              </label>
+                              {editVideoErr && <p style={{ color: "var(--color-danger)", fontSize: 12, marginBottom: 8 }}>{editVideoErr}</p>}
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {editVideos.map((url, i) => (
+                                  <span key={`ex-${i}`} style={{ fontSize: 11, padding: "3px 8px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                                    ▶ Video {i + 1}
+                                    <span onClick={() => setEditVideos((prev) => prev.filter((_, idx) => idx !== i))} style={{ cursor: "pointer", color: "var(--color-danger)", fontWeight: 800 }}>✕</span>
+                                  </span>
+                                ))}
+                                {editNewVideos.map((f, i) => (
+                                  <span key={`new-${i}`} style={{ fontSize: 11, padding: "3px 8px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                                    {f.name.length > 16 ? f.name.slice(0, 13) + "…" : f.name}
+                                    <span onClick={() => setEditNewVideos((prev) => prev.filter((_, idx) => idx !== i))} style={{ cursor: "pointer", color: "var(--color-danger)", fontWeight: 800 }}>✕</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            </>
+                          )}
+                          {editUploadMsg && <p style={{ color: "var(--muted)", fontSize: 12.5, marginBottom: 10 }}>{editUploadMsg}</p>}
                           {p.type === "rent" && (
                             <div style={{ marginBottom: 12 }}>
                               <div style={editLabelStyle}>Available For</div>
