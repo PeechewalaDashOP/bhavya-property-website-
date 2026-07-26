@@ -1254,8 +1254,27 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             cursor: default;
           }
           .soonChipIcon { width: 15px; height: 15px; color: var(--color-primary); flex: 0 0 auto; }
+          .fitHl { position: relative; display: inline-block; }
+          .fitHl::before {
+            content: ""; position: absolute; z-index: -1;
+            top: -0.1em; bottom: -0.1em; left: -0.15em; right: -0.15em;
+            background: rgba(252, 211, 77, .55); border-radius: 6px;
+            transform: scaleX(0); transform-origin: left;
+            animation: fitHlSweep 4.2s ease-in-out infinite;
+          }
+          @keyframes fitHlSweep {
+            0%   { transform: scaleX(0); transform-origin: left; }
+            12%  { transform: scaleX(1); transform-origin: left; }
+            60%  { transform: scaleX(1); transform-origin: left; }
+            60.01%  { transform: scaleX(1); transform-origin: right; }
+            72%  { transform: scaleX(0); transform-origin: right; }
+            100% { transform: scaleX(0); transform-origin: right; }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .fitHl::before { animation: none; transform: scaleX(1); }
+          }
         `}</style>
-        <h2 className="sec">Find what fits you</h2>
+        <h2 className="sec"><span className="fitHl">Find what fits you</span></h2>
         <p className="sub">Curated shortcuts into the same verified listings — pick who you are</p>
         <div className="fCardGrid">
           {FEATURED_SHORTCUTS.map((s) => (
