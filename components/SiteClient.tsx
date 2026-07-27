@@ -1524,7 +1524,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
             <p>🕒 Open: 9 AM – 8 PM (Mon–Sat)</p>
           </div>
         </div>
-        <div className="fbot">© 2026 Prop100 · Built by Bhavya Galav.</div>
+        <div className="fbot">© 2026 Prop100 · Developed by Team Prop100.</div>
       </div></footer>
 
       {/* PROPERTY MODAL */}
