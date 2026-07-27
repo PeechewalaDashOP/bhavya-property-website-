@@ -19,7 +19,7 @@ async function fetchProperty(slug: string): Promise<PropertyFull | null> {
   const db = createClient(url, key, { auth: { persistSession: false } });
   const { data, error } = await db
     .from("properties")
-    .select("*, property_units(*), dealers!dealer_id(id, name, role, years, rating)")
+    .select("*, property_units(*), dealers!dealer_id(id, name, role, years, rating), locality:localities!locality_id(*)")
     .eq("slug", slug)
     .eq("is_approved", true)
     .maybeSingle();
@@ -34,6 +34,23 @@ async function fetchProperty(slug: string): Promise<PropertyFull | null> {
     : [];
 
   return { ...data, property_units: units } as PropertyFull;
+}
+
+// Shared default FAQ set every property inherits — see
+// supabase/migration_faq_defaults.sql and mergeFaqs() in PropertyDetail.tsx.
+async function fetchFaqDefaults(): Promise<{ question: string; answer: string }[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return [];
+
+  const db = createClient(url, key, { auth: { persistSession: false } });
+  const { data, error } = await db
+    .from("faq_defaults")
+    .select("question, answer")
+    .order("sort_order");
+
+  if (error || !data) return [];
+  return data;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -106,7 +123,10 @@ export default async function PropertyPage({ params, searchParams }: Props) {
     else if (Array.isArray(v) && v.length > 0) initialParams[k] = v[0];
   }
 
-  const property = await fetchProperty(slug);
+  const [property, faqDefaults] = await Promise.all([
+    fetchProperty(slug),
+    fetchFaqDefaults(),
+  ]);
   if (!property) notFound();
 
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -118,7 +138,12 @@ export default async function PropertyPage({ params, searchParams }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PropertyDetail property={property} mapsKey={mapsKey} initialParams={initialParams} />
+      <PropertyDetail
+        property={property}
+        mapsKey={mapsKey}
+        initialParams={initialParams}
+        faqDefaults={faqDefaults}
+      />
     </>
   );
 }

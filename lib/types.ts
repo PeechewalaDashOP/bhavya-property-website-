@@ -53,6 +53,14 @@ export type Locality = {
   sort_order: number | null;
   aliases: string[];
   created_at: string;
+  // Locality Guide fields (property detail page) — shared across every
+  // property in this locality rather than duplicated per-listing. See
+  // supabase/migration_locality_guide.sql.
+  average_rent?: string | null;
+  popular_coachings?: string[] | null;
+  best_cafes?: string[] | null;
+  transport?: string | null;
+  safety_note?: string | null;
 };
 
 export type UnitAttributes = {
@@ -114,6 +122,18 @@ export type HostelMeta = {
   // locked enum column) is "Other"; lets the public page show the real name
   // instead of the literal word "Other".
   custom_coaching_hub?: string | null;
+  // Price Breakdown section (property detail page) — extra ledger rows
+  // beyond rent/deposit/electricity/maintenance, e.g. { label: "Late Entry
+  // Charges", value: "₹100 / instance" }. Rendered only when populated.
+  price_breakdown_extra?: { label: string; value: string }[];
+  // Location & Nearby section — walking distances to coaching institutes /
+  // key nearby places. Rendered only when populated. Stays per-property
+  // (unlike Locality Guide) — exact walking distances are specific to each
+  // building's location.
+  nearby_places?: { name: string; distance: string; category?: string }[];
+  // FAQ overrides/additions on top of the shared faq_defaults table — matched
+  // by question text (see mergeFaqs() in PropertyDetail.tsx).
+  faqs?: { question: string; answer: string }[];
 };
 
 export type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
@@ -159,6 +179,10 @@ export type PropertyFull = {
   lat: number | null;
   lng: number | null;
   locality_id: string | null;
+  // Joined `localities` row (see app/property/[slug]/page.tsx's
+  // `locality:localities!locality_id(*)` select) — carries the Locality
+  // Guide fields. Optional/undefined when not selected by a given query.
+  locality?: Locality | null;
   amenities: Record<string, boolean> | null;
   hostel_meta: HostelMeta | null;
   verified: boolean;

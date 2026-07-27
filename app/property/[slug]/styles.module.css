@@ -1295,3 +1295,326 @@
   background: var(--color-danger-light);
   color: var(--color-danger);
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Hostel/PG listing upgrade (property detail page, hostel only) —
+   everything below this line is scoped behind `isHostelOrPG` in
+   PropertyDetail.tsx and never applied to other property types.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Gallery category tabs ─────────────────────────────────────── */
+.galTabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 14px 4px;
+  scrollbar-width: none;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.galTabs::-webkit-scrollbar { display: none; }
+.galTab {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 7px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.galTab:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.galTabActive {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+/* ── Premium card treatment — soft shadow + radius + breathing room,
+   applied only via the explicit `cardUpgraded` modifier class. ──── */
+.cardUpgraded {
+  border-bottom: none !important;
+  border: 1px solid rgba(var(--color-primary-rgb), 0.08);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(12,32,29,0.04), 0 10px 28px -16px rgba(12,32,29,0.16);
+  margin: 0 auto 14px !important;
+}
+@media (min-width: 768px) {
+  .cardUpgraded { margin: 0 0 14px !important; }
+
+  /* Sidebar (buyBox) whitespace fix — hostel/PG only. .rightCol is forced to
+     full viewport height (see its own min-height/max-height above) so short
+     content leaves dead space below the CTA. Stretching buyBox to match and
+     pushing the trailing trust-row/location/disclaimer group to the bottom
+     via margin-top:auto fills that space instead of leaving it empty. */
+  .buyBoxHostel {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 54px - 28px);
+  }
+  .buyBoxBottomGroup {
+    margin-top: auto;
+  }
+}
+
+/* ── Stronger typographic hierarchy for section headers on this
+   redesigned section set (vs. the small uppercase .sectionTitle used
+   elsewhere on the site). ─────────────────────────────────────────── */
+.sectionTitleLg {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+.sectionSub {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -6px 0 14px;
+  line-height: 1.5;
+}
+
+/* ── Price Breakdown ledger ─────────────────────────────────────── */
+.ledger {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ledgerRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.ledgerRow:nth-child(even) { background: var(--bg); }
+.ledgerVal {
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  text-align: right;
+}
+.ledgerTotal {
+  background: rgba(var(--color-primary-rgb), 0.06) !important;
+  border-top: 1px solid rgba(var(--color-primary-rgb), 0.18);
+}
+.ledgerTotal .ledgerVal { color: var(--color-primary); font-size: 14.5px; }
+
+/* ── Grouped amenities ──────────────────────────────────────────── */
+.amenityGroup { margin-bottom: 16px; }
+.amenityGroup:last-child { margin-bottom: 0; }
+.amenityGroupLabel {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+}
+.amenityIconSvg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+/* ── Location & Nearby ──────────────────────────────────────────── */
+.nearbyList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nearbyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13.5px;
+  transition: background 0.15s;
+}
+.nearbyRow:last-child { border-bottom: none; }
+.nearbyRow:hover { background: var(--bg); }
+.nearbyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(var(--color-primary-rgb), 0.08);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+.nearbyName { flex: 1; color: var(--ink); font-weight: 600; }
+.nearbyDist {
+  font-weight: 700;
+  color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb), 0.08);
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ── Rules & Policy icon-card grid ──────────────────────────────── */
+.rulesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.ruleCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.ruleCard:hover {
+  border-color: rgba(var(--color-primary-rgb), 0.3);
+  box-shadow: 0 4px 14px -6px rgba(12,32,29,0.14);
+}
+.ruleIconBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+.ruleName {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.ruleVal {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+/* ── FAQ accordion ──────────────────────────────────────────────── */
+.faqList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.faqItem {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 14px;
+  transition: border-color 0.15s;
+}
+.faqItem[open] { border-color: rgba(var(--color-primary-rgb), 0.35); }
+.faqSummary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 0;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.faqSummary::-webkit-details-marker { display: none; }
+.faqChevron {
+  display: inline-flex;
+  color: var(--color-primary);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.faqItem[open] .faqChevron { transform: rotate(180deg); }
+.faqAnswer {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+/* ── Locality Guide ─────────────────────────────────────────────── */
+.localityGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.localityTile {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.localityLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.localityVal {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+/* ── CTA hover-lift + primary pulse (hostel/PG CTAs only) ───────── */
+.ctaLift {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.ctaLift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -10px rgba(var(--color-primary-rgb), 0.5);
+}
+.ctaPulse {
+  animation: ctaBreathe 2.5s ease-in-out infinite;
+}
+@keyframes ctaBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--color-primary-rgb), 0.35); }
+  50% { box-shadow: 0 0 0 8px rgba(var(--color-primary-rgb), 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctaPulse { animation: none; }
+  .ctaLift { transition: none; }
+  .ctaLift:hover { transform: none; }
+}
+
+/* ── Sidebar trust row (fills whitespace below the CTA) ──────────── */
+.sidebarTrustRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.sidebarTrustItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sidebarTrustItem svg { color: var(--color-primary); flex-shrink: 0; }
