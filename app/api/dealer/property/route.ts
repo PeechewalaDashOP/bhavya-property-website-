@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     nearest_coaching_hub, features, description,
     photoPaths, videoPaths, units, hostel_meta,
     lat, lng, owner, tenant_preference,
+    saleDetails, amenityKeys,
   } = body as Record<string, unknown>;
 
   if (!type || !ptype || !loc) {
@@ -48,6 +49,11 @@ export async function POST(req: NextRequest) {
   }
   if (!Array.isArray(videoPaths) || (videoPaths as string[]).length === 0) {
     return NextResponse.json({ error: "At least 1 video is required" }, { status: 400 });
+  }
+  // Sale module — see docs/sale-architecture.md §5. Photos are optional for
+  // Rent/PG today but required for Sale specifically.
+  if (type === "sale" && (!Array.isArray(photoPaths) || (photoPaths as string[]).length === 0)) {
+    return NextResponse.json({ error: "At least 1 photo is required" }, { status: 400 });
   }
 
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -196,6 +202,66 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Sale module — one sale_property_details row (1:1) + relational
+  // amenities. See docs/sale-architecture.md §4.2. A failure here is
+  // surfaced as a clear error (unlike the best-effort units/draft-cleanup
+  // blocks below) since this is the core structured data for a sale
+  // listing, not an optional extra.
+  if (saleDetails && typeof saleDetails === "object") {
+    const sd = saleDetails as Record<string, unknown>;
+    const numOrNull = (v: unknown) => (v !== null && v !== undefined && v !== "" ? Number(v) : null);
+    const strOrNull = (v: unknown) => (v ? String(v) : null);
+    const { error: sdErr } = await db.from("sale_property_details").insert({
+      property_id: data.id,
+      landmark: strOrNull(sd.landmark),
+      society_name: strOrNull(sd.societyName),
+      street_address: strOrNull(sd.streetAddress),
+      balconies: numOrNull(sd.balconies),
+      house_floors: numOrNull(sd.houseFloors),
+      plot_type: strOrNull(sd.plotType),
+      cabins: numOrNull(sd.cabins),
+      meeting_rooms: numOrNull(sd.meetingRooms),
+      office_washrooms: numOrNull(sd.officeWashrooms),
+      shop_washroom: sd.shopWashroom != null ? Boolean(sd.shopWashroom) : null,
+      covered_area: numOrNull(sd.coveredArea),
+      open_area: numOrNull(sd.openArea),
+      truck_access: sd.truckAccess != null ? Boolean(sd.truckAccess) : null,
+      loading_dock: sd.loadingDock != null ? Boolean(sd.loadingDock) : null,
+      property_age: strOrNull(sd.propertyAge),
+      availability_status: strOrNull(sd.availabilityStatus),
+      possession_date: strOrNull(sd.possessionDate),
+      price_negotiable: Boolean(sd.priceNegotiable),
+      area_value: numOrNull(sd.areaValue),
+      area_unit: strOrNull(sd.areaUnit),
+      floor_special: strOrNull(sd.floorSpecial),
+      facing: strOrNull(sd.facing),
+      ownership_type: strOrNull(sd.ownershipType),
+      parking_type: strOrNull(sd.parkingType) ?? "none",
+      poster_role: strOrNull(sd.posterRole),
+      documents: Array.isArray(sd.documents) ? sd.documents : [],
+    });
+    if (sdErr) {
+      return NextResponse.json(
+        { error: `Property saved but sale details failed: ${sdErr.message}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (Array.isArray(amenityKeys) && (amenityKeys as string[]).length > 0) {
+    const { data: amenityRows } = await db
+      .from("amenities")
+      .select("id, key")
+      .in("key", amenityKeys as string[]);
+    if (amenityRows && amenityRows.length > 0) {
+      // Best-effort — a missing amenity link is far less severe than
+      // missing sale_property_details, doesn't need to fail the submission.
+      await db.from("property_amenities").insert(
+        amenityRows.map((a) => ({ property_id: data.id, amenity_id: a.id }))
+      );
+    }
+  }
 
   // Insert property units if provided
   const unitRows = Array.isArray(units) ? units : [];

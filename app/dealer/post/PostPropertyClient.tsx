@@ -6,22 +6,45 @@ import {
   Purpose, PURPOSES, HostelForm, StandardForm,
   emptyHostelForm, emptyStandardForm,
 } from "./types";
+import { SaleForm, emptySaleForm } from "./sale/types";
 import HostelFlow from "./hostel/HostelFlow";
 import StandardFlow from "./standard/StandardFlow";
+import SaleFlow from "./sale/SaleFlow";
 import styles from "./styles.module.css";
 
 type Draft = { purpose: Purpose; form_data: Record<string, unknown>; updated_at: string };
 
 const PURPOSE_LABEL: Record<Purpose, string> = { pg: "PG / Hostel", rent: "Rent", sale: "Sale" };
 
-type Props = { initialHasSession: boolean; initialDraft: Draft | null };
+type Props = {
+  initialHasSession: boolean;
+  initialDraft: Draft | null;
+  initialSellerName?: string;
+  initialSellerPhone?: string;
+};
 
-export default function PostPropertyClient({ initialHasSession, initialDraft }: Props) {
+export default function PostPropertyClient({
+  initialHasSession, initialDraft,
+  initialSellerName = "", initialSellerPhone = "",
+}: Props) {
   const router = useRouter();
   const [purpose, setPurpose] = useState<Purpose | null>(null);
   const [hostelForm, setHostelForm] = useState<HostelForm>(emptyHostelForm());
   const [standardForm, setStandardForm] = useState<StandardForm>(emptyStandardForm("rent"));
+  const [saleForm, setSaleForm] = useState<SaleForm>(emptySaleForm());
   const [localities, setLocalities] = useState<{ name: string; slug: string }[]>([]);
+
+  // Verified seller identity — resolved server-side for an existing session
+  // (page.tsx), or captured fresh below when a new owner OTP-verifies.
+  // SaleFlow/Step4Publish only ever consumes these two plain strings + the
+  // onChangeNumber callback — never OTP/session logic itself (see
+  // docs/sale-architecture.md §10 on auth-provider agnosticism).
+  const [sellerName, setSellerName] = useState(initialSellerName);
+  const [sellerPhone, setSellerPhone] = useState(initialSellerPhone);
+  // True while re-verifying a different WhatsApp number mid-wizard (Step 4's
+  // "Change number" link) — distinct from the first-time identity gate so a
+  // successful re-verify updates identity without resetting saleForm.
+  const [reverifying, setReverifying] = useState(false);
 
   // Identity — OTP-verified (purpose='owner_post'), same mechanism as
   // regular dealer login. hasSession and draft both arrive as props,
@@ -71,9 +94,11 @@ export default function PostPropertyClient({ initialHasSession, initialDraft }: 
     }, 1000);
   }
 
-  function activatePurpose(p: Purpose) {
+  function activatePurpose(p: Purpose, sellerNameOverride?: string) {
     setPurpose(p);
-    if (p === "rent" || p === "sale") {
+    if (p === "sale") {
+      setSaleForm(emptySaleForm(sellerNameOverride ?? sellerName));
+    } else if (p === "rent") {
       setStandardForm(emptyStandardForm(p));
     } else {
       setHostelForm(emptyHostelForm());
@@ -123,15 +148,66 @@ export default function PostPropertyClient({ initialHasSession, initialDraft }: 
     setIdentifying(false);
     if (!res.ok) { setIdentifyErr(data.error ?? "Verification failed. Please try again."); return; }
 
+    const cleanedPhone = whatsapp.replace(/\D/g, "");
     setHasSession(true);
-    if (pendingPurpose) activatePurpose(pendingPurpose);
+    setSellerName(name.trim());
+    setSellerPhone(cleanedPhone);
+
+    // "Change number" mid-wizard (Step 4) — identity updated in place,
+    // return to the SAME wizard/step, saleForm untouched. Does not go
+    // through activatePurpose (which would reset the form).
+    if (reverifying) {
+      setReverifying(false);
+      setPendingPurpose(null);
+      return;
+    }
+
+    if (pendingPurpose) activatePurpose(pendingPurpose, name.trim());
     setPendingPurpose(null);
+  }
+
+  // Step 4's "Change number" link — re-runs the same OTP gate without
+  // resetting purpose/saleForm. See docs/sale-architecture.md §10.
+  function startChangeNumber() {
+    setReverifying(true);
+    setIdentityStep("form");
+    setIdentifyErr("");
+    setName(sellerName);
+    setWhatsapp("");
+    setOtp("");
+  }
+
+  // Deliberately NOT choosePurpose() — that function short-circuits and
+  // skips sending an OTP entirely whenever hasSession is already true,
+  // which it always is by the time someone is mid-wizard wanting to swap
+  // numbers. This always sends, regardless of session state.
+  async function sendReverifyOtp() {
+    setIdentifyErr("");
+    const cleanedName = name.trim();
+    const cleanedPhone = whatsapp.replace(/\D/g, "");
+    if (!cleanedName) { setIdentifyErr("Enter your name"); return; }
+    if (cleanedPhone.length !== 10) { setIdentifyErr("Enter a valid 10-digit WhatsApp number"); return; }
+
+    setIdentifying(true);
+    const res = await fetch("/api/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: cleanedPhone, purpose: "owner_post" }),
+    });
+    const data = await res.json();
+    setIdentifying(false);
+    if (!res.ok) { setIdentifyErr(data.error ?? "Failed to send OTP. Please try again."); return; }
+    setOtp("");
+    setIdentityStep("otp");
+    startCooldown();
   }
 
   function resumeDraft() {
     if (!draft) return;
     setPurpose(draft.purpose);
-    if (draft.purpose === "rent" || draft.purpose === "sale") {
+    if (draft.purpose === "sale") {
+      setSaleForm({ ...emptySaleForm(sellerName), ...draft.form_data } as SaleForm);
+    } else if (draft.purpose === "rent") {
       setStandardForm({ ...emptyStandardForm(draft.purpose), ...draft.form_data } as StandardForm);
     } else {
       setHostelForm({ ...emptyHostelForm(), ...draft.form_data } as HostelForm);
@@ -154,6 +230,98 @@ export default function PostPropertyClient({ initialHasSession, initialDraft }: 
   function goToDashboard() {
     setDraft(null);
     router.replace("/dealer");
+  }
+
+  /* ── Re-verify a different WhatsApp number mid-wizard (Step 4's "Change
+     number" link) — reuses the same OTP screens as the first-time gate,
+     but returns to the SAME purpose/step on success instead of resetting
+     the form. See startChangeNumber() / verifyIdentityOtp() above. ── */
+  if (reverifying) {
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+        <div style={{ background: "var(--dark)", color: "#fff" }}>
+          <div style={{ maxWidth: 520, margin: "0 auto", padding: "0 16px", height: 54, display: "flex", alignItems: "center" }}>
+            <span style={{ fontWeight: 800, fontSize: 16 }}>Prop<span style={{ color: "var(--red)" }}>100</span></span>
+          </div>
+        </div>
+        <div style={{ maxWidth: 520, margin: "0 auto", padding: "24px 14px" }}>
+          {identityStep === "form" ? (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: 16, boxShadow: "var(--sh)" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "var(--ink)" }}>Verify new number</div>
+              <input
+                type="text"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 9, padding: "12px 14px", fontSize: 15, background: "var(--bg)", color: "var(--ink)", outline: "none", marginBottom: 10 }}
+              />
+              <input
+                type="tel"
+                inputMode="numeric"
+                placeholder="New WhatsApp number (10 digits)"
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 9, padding: "12px 14px", fontSize: 15, background: "var(--bg)", color: "var(--ink)", outline: "none" }}
+              />
+              {identifyErr && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 8 }}>{identifyErr}</p>}
+              <button
+                onClick={sendReverifyOtp}
+                disabled={identifying}
+                className={styles.btnNext}
+                style={{ width: "100%", marginTop: 12 }}
+              >
+                {identifying ? "Please wait…" : "Send OTP →"}
+              </button>
+              <button
+                onClick={() => setReverifying(false)}
+                style={{ display: "block", width: "100%", marginTop: 8, color: "var(--muted)", fontSize: 13, textAlign: "center" }}
+              >
+                ← Cancel
+              </button>
+            </div>
+          ) : (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: 16, boxShadow: "var(--sh)" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: "var(--ink)" }}>
+                Verify your new WhatsApp number
+              </div>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+                Code sent to <strong style={{ color: "var(--ink)" }}>+91 {whatsapp}</strong>. Valid for 10 minutes.
+              </p>
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="6-digit OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 9, padding: "12px 14px", fontSize: 20, letterSpacing: 6, textAlign: "center", background: "var(--bg)", color: "var(--ink)", outline: "none", marginBottom: 10 }}
+                autoFocus
+              />
+              {identifyErr && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 8 }}>{identifyErr}</p>}
+              <button onClick={verifyIdentityOtp} disabled={identifying} className={styles.btnNext} style={{ width: "100%", marginBottom: 8 }}>
+                {identifying ? "Verifying…" : "Verify →"}
+              </button>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <button onClick={() => setIdentityStep("form")} style={{ color: "var(--muted)", fontSize: 12.5 }}>← Change number</button>
+                <button
+                  onClick={sendReverifyOtp}
+                  disabled={cooldown > 0}
+                  style={{ color: "var(--muted)", fontSize: 12.5 }}
+                >
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend OTP"}
+                </button>
+              </div>
+              <button
+                onClick={() => setReverifying(false)}
+                style={{ display: "block", width: "100%", marginTop: 8, color: "var(--muted)", fontSize: 13, textAlign: "center" }}
+              >
+                ← Cancel and keep current number
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   /* ── Purpose selector (Step 0) — identity capture folded in ── */
@@ -315,7 +483,22 @@ export default function PostPropertyClient({ initialHasSession, initialDraft }: 
     );
   }
 
-  /* ── Standard rent / sale flow ── */
+  /* ── Sale — dedicated premium 4-step flow (docs/sale-architecture.md) ── */
+  if (purpose === "sale") {
+    return (
+      <SaleFlow
+        form={saleForm}
+        setForm={setSaleForm}
+        localities={localities}
+        sellerPhone={sellerPhone}
+        onChangeNumber={startChangeNumber}
+        onCancel={backToSelector}
+        onDone={goToDashboard}
+      />
+    );
+  }
+
+  /* ── Standard rent flow ── */
   return (
     <StandardFlow
       form={standardForm}

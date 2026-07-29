@@ -136,6 +136,54 @@ export type HostelMeta = {
   faqs?: { question: string; answer: string }[];
 };
 
+// Sale module — property-type-specific fields for "For Sale" listings.
+// One row per sale property, 1:1 with `properties` (property_id is both PK
+// and FK on the DB side). See docs/sale-architecture.md §2.2/§4.2.
+export type SalePropertyDetails = {
+  property_id: number;
+  landmark: string | null;
+  society_name: string | null;
+  street_address: string | null;
+  balconies: number | null;
+  house_floors: number | null;
+  plot_type: "residential" | "commercial" | "agricultural" | "industrial" | null;
+  cabins: number | null;
+  meeting_rooms: number | null;
+  office_washrooms: number | null;
+  shop_washroom: boolean | null;
+  covered_area: number | null;
+  open_area: number | null;
+  truck_access: boolean | null;
+  loading_dock: boolean | null;
+  property_age: "new" | "0-1" | "1-5" | "5-10" | "10+" | null;
+  availability_status: "ready_to_move" | "under_construction" | null;
+  possession_date: string | null;
+  price_negotiable: boolean;
+  area_value: number | null;
+  area_unit: "sqft" | "sqyard" | "sqm" | "acre" | "bigha" | null;
+  floor_special: "ground" | "basement" | "top" | null;
+  facing: "N" | "S" | "E" | "W" | "NE" | "NW" | "SE" | "SW" | null;
+  ownership_type: "freehold" | "leasehold" | "co_operative" | "power_of_attorney" | null;
+  parking_type: "none" | "bike" | "car" | "both" | null;
+  poster_role: "owner" | "builder" | "broker" | null;
+  documents: { doc_type: string; url: string }[];
+  created_at: string;
+  updated_at: string;
+};
+
+// Global amenities master list (docs/sale-architecture.md §2.3) — not
+// Sale-specific, designed for other property types to adopt later.
+export type Amenity = {
+  id: number;
+  key: string;
+  label: string;
+  icon: string | null;
+  category: "residential" | "plot" | "commercial" | "universal";
+  applicable_property_types: string[];
+  is_active: boolean;
+  sort_order: number;
+};
+
 export type ListingStatus = "pending" | "live" | "paused_owner" | "paused_admin" | "rejected";
 
 export type PropertyDraft = {
@@ -185,6 +233,11 @@ export type PropertyFull = {
   locality?: Locality | null;
   amenities: Record<string, boolean> | null;
   hostel_meta: HostelMeta | null;
+  // Sale module joins — optional/undefined when not selected by a given
+  // query (only the property detail page's future sale-display work would
+  // populate these; the posting flow writes them via separate inserts).
+  sale_details?: SalePropertyDetails | null;
+  amenity_keys?: string[];
   verified: boolean;
   is_verified: boolean;
   is_featured: boolean;

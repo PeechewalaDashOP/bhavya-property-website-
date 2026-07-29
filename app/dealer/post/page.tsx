@@ -37,5 +37,12 @@ export default async function PostPropertyPage() {
     draft = (data as Draft | null) ?? null;
   }
 
-  return <PostPropertyClient initialHasSession={!!session} initialDraft={draft} />;
+  return (
+    <PostPropertyClient
+      initialHasSession={!!session}
+      initialDraft={draft}
+      initialSellerName={session?.name ?? ""}
+      initialSellerPhone={session?.phone ?? ""}
+    />
+  );
 }

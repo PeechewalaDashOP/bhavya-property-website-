@@ -1,0 +1,573 @@
+/* ── Sale wizard — premium visual language ───────────────────────
+   Reuses the same CSS custom properties as globals.css / the shared
+   ../styles.module.css (--color-primary, --ink, --muted, --bg, --line,
+   --surface) so branding stays consistent, but with more generous
+   spacing, softer/deeper shadows, larger radii, and calmer typography
+   for the Airbnb/Stripe/Apple-leaning feel Bhavya asked for. A CSS
+   Module, not Tailwind — matches every other page in this app. ─── */
+
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+.topbar {
+  background: var(--dark);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbarInner {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 20px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.shell {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ── Progress bar — a slim top bar + step label, calmer than a dot chain ── */
+.progressTrack {
+  height: 4px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 20px 0 10px;
+}
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), #14b8a6);
+  border-radius: 4px;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.progressMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 18px;
+}
+.progressStepLabel {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.progressCount {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ── Premium card — the base container for every section ────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 22px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(12, 32, 29, 0.03), 0 8px 24px -12px rgba(12, 32, 29, 0.1);
+}
+.cardTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+.cardSub {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+/* ── Property type card grid ──────────────────────────────────────── */
+.typeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 420px) {
+  .typeGrid { grid-template-columns: repeat(3, 1fr); }
+}
+.typeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 8px;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+.typeCard:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 6px 16px -8px rgba(15, 118, 110, 0.35);
+}
+.typeCard:active { transform: scale(0.96); }
+.typeCardActive {
+  border-color: var(--color-primary);
+  background: rgba(15, 118, 110, 0.06);
+  color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+.typeIcon { font-size: 26px; }
+
+/* ── Labels & inputs ──────────────────────────────────────────────── */
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 7px;
+}
+.labelOptional {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.field { margin-bottom: 16px; }
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  font-size: 16px;
+  background: var(--bg);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+}
+.inputError { border-color: var(--color-danger) !important; }
+.select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7480' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  cursor: pointer;
+}
+.textarea {
+  resize: vertical;
+  min-height: 110px;
+  line-height: 1.6;
+}
+.errorMsg {
+  color: var(--color-danger);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* ── Number stepper (BHK / bathrooms / balconies) ────────────────── */
+.stepperRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stepperBtn {
+  min-width: 48px;
+  height: 48px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s;
+  color: var(--muted);
+}
+.stepperBtn:active { transform: scale(0.92); }
+.stepperBtnActive {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* ── Toggle switch (negotiable, truck access, etc.) ──────────────── */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.toggleLabel { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.toggle { position: relative; width: 48px; height: 27px; flex-shrink: 0; }
+.toggle input { display: none; }
+.toggleSlider {
+  position: absolute;
+  inset: 0;
+  background: #d1d5db;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggleSlider::before {
+  content: "";
+  position: absolute;
+  width: 21px;
+  height: 21px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.toggle input:checked + .toggleSlider { background: var(--color-primary); }
+.toggle input:checked + .toggleSlider::before { transform: translateX(21px); }
+
+/* ── Chip groups (facing / ownership / parking / amenities) ──────── */
+.chipGrid { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 10px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--muted);
+  transition: all 0.12s;
+}
+.chip:active { transform: scale(0.95); }
+.chipActive {
+  border-color: var(--color-primary);
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--color-primary);
+}
+.chipsLoading {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+
+/* ── Nav buttons ──────────────────────────────────────────────────── */
+.navRow {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  padding-bottom: 56px;
+}
+.btnBack {
+  padding: 16px 22px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.btnBack:active { transform: scale(0.97); background: var(--bg); }
+.btnNext {
+  flex: 1;
+  padding: 16px;
+  border: none;
+  border-radius: 14px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+  box-shadow: 0 8px 20px -8px rgba(15, 118, 110, 0.45);
+}
+.btnNext:active { transform: scale(0.98); }
+.btnNext:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+/* ── Media (photos / video) ───────────────────────────────────────── */
+.mediaZone {
+  border: 2px dashed var(--line);
+  border-radius: 18px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg);
+}
+.mediaZone:hover { border-color: var(--color-primary); }
+.mediaZone:active { transform: scale(0.99); }
+.mediaZoneRequired { border-color: var(--color-danger); background: var(--color-danger-light); }
+.mediaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.mediaThumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--line);
+}
+.mediaThumb img { width: 100%; height: 100%; object-fit: cover; }
+.coverBadge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(245, 158, 11, 0.95);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 20px;
+  padding: 3px 9px;
+}
+.mediaThumbRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  backdrop-filter: blur(2px);
+}
+.mediaThumbActions {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+.mediaMoveBtn {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+}
+.mediaMoveBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.setCoverBtn {
+  position: absolute;
+  bottom: 34px;
+  left: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+}
+.videoRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 118, 110, 0.05);
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 12px;
+  padding: 11px 14px;
+  margin-top: 10px;
+}
+.videoRowName {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.videoRowRemove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+/* ── Document upload rows (Step 4) ────────────────────────────────── */
+.docRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.docRow:last-child { border-bottom: none; }
+.docLabel { font-size: 14px; font-weight: 600; color: var(--ink); }
+.docStatus { font-size: 12px; color: var(--muted); }
+.docUploadBtn {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ── Verified phone badge (Step 4) ────────────────────────────────── */
+.verifiedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(22, 163, 74, 0.06);
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.verifiedPhone { font-size: 15px; font-weight: 700; color: var(--ink); }
+.verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #16a34a;
+  margin-left: 8px;
+}
+.changeNumberLink {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+
+/* ── Review summary (Step 4) ──────────────────────────────────────── */
+.reviewSection { margin-bottom: 18px; }
+.reviewSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.reviewSectionTitle {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.reviewEditLink {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.reviewRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.reviewRow:last-child { border-bottom: none; }
+.reviewRowLabel { color: var(--muted); }
+.reviewRowVal { color: var(--ink); font-weight: 600; text-align: right; }
+.reviewThumbRow { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0; }
+.reviewThumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--line);
+}
+.reviewThumb img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Declaration checkbox ─────────────────────────────────────────── */
+.declarationRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.declarationRow input { width: auto; margin-top: 2px; flex-shrink: 0; accent-color: var(--color-primary); }
+.declarationText { font-size: 13px; color: var(--ink); line-height: 1.5; }
+
+/* ── Upload progress ──────────────────────────────────────────────── */
+.uploadOverlay { padding: 40px 16px; text-align: center; }
+.uploadBarTrack {
+  height: 8px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 16px 0 10px;
+}
+.uploadBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), #14b8a6);
+  border-radius: 4px;
+  transition: width 0.35s ease;
+}
+
+/* ── Success screen ───────────────────────────────────────────────── */
+.success { text-align: center; padding: 64px 24px 40px; }
+.successIcon { font-size: 60px; margin-bottom: 18px; animation: popIn 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.successTitle { font-size: 26px; font-weight: 800; color: var(--ink); margin-bottom: 8px; }
+.successSub { font-size: 15px; color: var(--muted); margin-bottom: 28px; line-height: 1.55; }
+
+/* ── Loading skeleton (amenity fetch, etc.) ───────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--line) 25%, var(--surface) 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: skShimmer 1.4s infinite;
+  border-radius: 10px;
+}
+@keyframes skShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
