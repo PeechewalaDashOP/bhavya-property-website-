@@ -364,7 +364,9 @@ function LeadSheet({
   property: PropertyFull;
   selectedUnit: PropertyUnit | null;
 }) {
-  const isHostelOrPG = ["Hostel", "PG", "hostel", "pg"].includes(property.ptype);
+  // "Room" = the Room (PG) flow's ptype (reuses this same hostel_meta/
+  // property_units-backed rich display — see app/dealer/post/room/).
+  const isHostelOrPG = ["Hostel", "PG", "Room", "hostel", "pg", "room"].includes(property.ptype);
   const [phase, setPhase] = useState<LeadPhase>("form");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -1372,7 +1374,9 @@ export default function PropertyDetail({
   if (property.min_stay_months) highlights.push({ icon: "📅", label: `Min ${property.min_stay_months} Month${property.min_stay_months > 1 ? "s" : ""}` });
   if (property.hostel_meta?.usp_text) highlights.push({ icon: "✨", label: property.hostel_meta.usp_text });
 
-  const isHostelOrPG = ["Hostel", "PG", "hostel", "pg"].includes(property.ptype);
+  // "Room" = the Room (PG) flow's ptype (reuses this same hostel_meta/
+  // property_units-backed rich display — see app/dealer/post/room/).
+  const isHostelOrPG = ["Hostel", "PG", "Room", "hostel", "pg", "room"].includes(property.ptype);
   const hm = property.hostel_meta;
 
   function fmtDateStr(iso: string | null) {

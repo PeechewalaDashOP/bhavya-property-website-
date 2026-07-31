@@ -8,6 +8,12 @@ export const HOUSE_RULE_LABELS: Record<string, string> = {
   no_alcohol: "Alcohol not allowed",
   no_opp_gender: "Opposite gender entry not allowed",
   no_guardian: "Guardian stay not allowed",
+  // Room (PG) flow's paired rule set (app/dealer/post/room/types.ts) —
+  // additive, doesn't affect Hostel's existing rule keys above.
+  visitors_allowed: "Visitors allowed",
+  visitors_restricted: "Visitors restricted",
+  pets_allowed: "Pets allowed",
+  pets_not_allowed: "Pets not allowed",
 };
 
 export const SERVICE_LABELS: Record<string, { label: string; icon: string }> = {
@@ -26,6 +32,8 @@ export const COMMON_AMENITY_LABELS: Record<string, { label: string; icon: string
   power_backup: { label: "Power Backup", icon: "🔌" },
   wifi: { label: "Wi-Fi", icon: "📶" },
   tv: { label: "TV", icon: "📺" },
+  // Room (PG) flow addition — additive, doesn't affect existing Hostel data.
+  cctv: { label: "CCTV", icon: "📹" },
 };
 
 export const TENANT_TYPE_LABELS: Record<string, string> = {

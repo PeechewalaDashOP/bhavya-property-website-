@@ -7,14 +7,16 @@ import {
   emptyHostelForm, emptyStandardForm,
 } from "./types";
 import { SaleForm, emptySaleForm } from "./sale/types";
+import { RoomForm, emptyRoomForm } from "./room/types";
 import HostelFlow from "./hostel/HostelFlow";
 import StandardFlow from "./standard/StandardFlow";
 import SaleFlow from "./sale/SaleFlow";
+import RoomFlow from "./room/RoomFlow";
 import styles from "./styles.module.css";
 
 type Draft = { purpose: Purpose; form_data: Record<string, unknown>; updated_at: string };
 
-const PURPOSE_LABEL: Record<Purpose, string> = { pg: "PG / Hostel", rent: "Rent", sale: "Sale" };
+const PURPOSE_LABEL: Record<Purpose, string> = { pg: "Hostel", rent: "Rent", sale: "Sale" };
 
 type Props = {
   initialHasSession: boolean;
@@ -32,6 +34,13 @@ export default function PostPropertyClient({
   const [hostelForm, setHostelForm] = useState<HostelForm>(emptyHostelForm());
   const [standardForm, setStandardForm] = useState<StandardForm>(emptyStandardForm("rent"));
   const [saleForm, setSaleForm] = useState<SaleForm>(emptySaleForm());
+  const [roomForm, setRoomForm] = useState<RoomForm>(emptyRoomForm());
+  // True once the Rent purpose's type grid picks "Room (PG)" — swaps
+  // StandardFlow out for the dedicated RoomFlow wizard while purpose stays
+  // "rent". See StandardFlow.tsx's onPickRoomPg / docs/sale-architecture.md-
+  // style module split (this flow's own equivalent write-up would live in
+  // a future docs/room-architecture.md if one gets written).
+  const [roomFlowActive, setRoomFlowActive] = useState(false);
   const [localities, setLocalities] = useState<{ name: string; slug: string }[]>([]);
 
   // Verified seller identity — resolved server-side for an existing session
@@ -96,6 +105,7 @@ export default function PostPropertyClient({
 
   function activatePurpose(p: Purpose, sellerNameOverride?: string) {
     setPurpose(p);
+    setRoomFlowActive(false);
     if (p === "sale") {
       setSaleForm(emptySaleForm(sellerNameOverride ?? sellerName));
     } else if (p === "rent") {
@@ -103,6 +113,13 @@ export default function PostPropertyClient({
     } else {
       setHostelForm(emptyHostelForm());
     }
+  }
+
+  // Rent's type grid picked "Room (PG)" — swap StandardFlow out for the
+  // dedicated RoomFlow wizard, purpose stays "rent".
+  function pickRoomPg() {
+    setRoomForm(emptyRoomForm());
+    setRoomFlowActive(true);
   }
 
   async function choosePurpose(p: Purpose) {
@@ -206,9 +223,20 @@ export default function PostPropertyClient({
     if (!draft) return;
     setPurpose(draft.purpose);
     if (draft.purpose === "sale") {
+      setRoomFlowActive(false);
       setSaleForm({ ...emptySaleForm(sellerName), ...draft.form_data } as SaleForm);
     } else if (draft.purpose === "rent") {
-      setStandardForm({ ...emptyStandardForm(draft.purpose), ...draft.form_data } as StandardForm);
+      // A Room (PG) draft is marked with __roomFlow: true (see
+      // RoomFlow.tsx's autosave) — RoomForm has no ptype field of its own
+      // (always "Room"), so this marker is the resume-time discriminator
+      // between a Room (PG) draft and a plain Flat/House/etc. rent draft.
+      if ((draft.form_data as Record<string, unknown>).__roomFlow === true) {
+        setRoomFlowActive(true);
+        setRoomForm({ ...emptyRoomForm(), ...draft.form_data } as RoomForm);
+      } else {
+        setRoomFlowActive(false);
+        setStandardForm({ ...emptyStandardForm(draft.purpose), ...draft.form_data } as StandardForm);
+      }
     } else {
       setHostelForm({ ...emptyHostelForm(), ...draft.form_data } as HostelForm);
     }
@@ -470,7 +498,7 @@ export default function PostPropertyClient({
     );
   }
 
-  /* ── PG / Hostel dedicated 4-step flow ── */
+  /* ── Hostel dedicated 4-step flow ── */
   if (purpose === "pg") {
     return (
       <HostelFlow
@@ -498,7 +526,20 @@ export default function PostPropertyClient({
     );
   }
 
-  /* ── Standard rent flow ── */
+  /* ── Rent: Room (PG) — dedicated premium wizard, purpose stays "rent" ── */
+  if (purpose === "rent" && roomFlowActive) {
+    return (
+      <RoomFlow
+        form={roomForm}
+        setForm={setRoomForm}
+        localities={localities}
+        onCancel={backToSelector}
+        onDone={goToDashboard}
+      />
+    );
+  }
+
+  /* ── Standard rent flow (Flat/House/Shop/etc.) ── */
   return (
     <StandardFlow
       form={standardForm}
@@ -506,6 +547,7 @@ export default function PostPropertyClient({
       localities={localities}
       onCancel={backToSelector}
       onDone={goToDashboard}
+      onPickRoomPg={pickRoomPg}
     />
   );
 }

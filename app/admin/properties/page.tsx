@@ -494,7 +494,7 @@ function PropertiesContent() {
     setEditTenantPref((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   }
   function isPgProp(p: PropRow) {
-    return p.ptype === "Hostel" || p.ptype === "PG" || !!p.hostel_meta;
+    return p.ptype === "Hostel" || p.ptype === "PG" || p.ptype === "Room" || !!p.hostel_meta;
   }
   function setHostelField<K extends keyof HostelEditState>(key: K, value: HostelEditState[K]) {
     setEditHostel((prev) => ({ ...prev, [key]: value }));

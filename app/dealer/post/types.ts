@@ -20,9 +20,9 @@ export type UserType = "owner" | "manager" | "agent";
 /* ── Option lists ──────────────────────────────────────────── */
 
 export const PURPOSES: { key: Purpose; label: string; icon: string; sub: string }[] = [
-  { key: "pg",   label: "PG / Hostel", icon: "🏨", sub: "Rooms let per bed" },
-  { key: "rent", label: "For Rent",    icon: "🔑", sub: "Flat, house, room, shop" },
-  { key: "sale", label: "For Sale",    icon: "🏷️", sub: "Flat, house, shop, plot" },
+  { key: "pg",   label: "Hostel",   icon: "🏨", sub: "Dedicated hostel buildings" },
+  { key: "rent", label: "For Rent", icon: "🔑", sub: "Flat, house, room (PG), shop" },
+  { key: "sale", label: "For Sale", icon: "🏷️", sub: "Flat, house, shop, plot" },
 ];
 
 /* Hostel/PG is NOT in these lists — it has its own purpose. */

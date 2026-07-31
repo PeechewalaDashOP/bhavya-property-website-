@@ -34,12 +34,18 @@ export default function StandardFlow({
   localities,
   onCancel,
   onDone,
+  onPickRoomPg,
 }: {
   form: StandardForm;
   setForm: (updater: (f: StandardForm) => StandardForm) => void;
   localities: { name: string; slug: string }[];
   onCancel: () => void;
   onDone: () => void;
+  // "Room" is intercepted here and handed off to the dedicated Room (PG)
+  // wizard instead — see docs note in PostPropertyClient.tsx. Every other
+  // ptype (Flat/House/Shop/Office/Showroom/Warehouse-Godown) still goes
+  // through this file's own 3-step form, unchanged.
+  onPickRoomPg: () => void;
 }) {
   const [step, setStep] = useState(1);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -313,10 +319,10 @@ export default function StandardFlow({
                   <button
                     key={pt}
                     className={`${styles.ptypeCard} ${form.ptype === pt ? styles.ptypeCardActive : ""}`}
-                    onClick={() => set("ptype", pt)}
+                    onClick={() => (pt === "Room" && isRent ? onPickRoomPg() : set("ptype", pt))}
                   >
                     <span style={{ fontSize: 26 }}>{PTYPE_ICONS[pt]}</span>
-                    <span>{pt}</span>
+                    <span>{pt === "Room" ? "Room (PG)" : pt}</span>
                   </button>
                 ))}
               </div>

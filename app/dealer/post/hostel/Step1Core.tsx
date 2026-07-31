@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { COACHING_HUBS } from "@/lib/constants";
 import {
-  HostelForm, PgKind, RoomCategoryKey, UserType,
+  HostelForm, RoomCategoryKey, UserType,
   ROOM_CATEGORIES, USER_TYPES, emptyRoomConfig,
 } from "../types";
 import styles from "../styles.module.css";
@@ -79,27 +79,6 @@ export default function Step1Core({
 
   return (
     <>
-      {/* ── PG or Hostel ── */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>Is this a Hostel or a PG?</div>
-        <div className={styles.typeToggle}>
-          {(["Hostel", "PG"] as PgKind[]).map((k) => (
-            <button
-              key={k}
-              className={`${styles.typeBtn} ${form.pgKind === k ? styles.typeBtnActive : ""}`}
-              onClick={() => set("pgKind", k)}
-            >
-              {k === "Hostel" ? "🏨 Hostel" : "🛏️ PG"}
-            </button>
-          ))}
-        </div>
-        <p className={styles.helpText}>
-          {form.pgKind === "Hostel"
-            ? "A dedicated building with many rooms, usually for students."
-            : "Paying guest — rooms in a home, usually with meals."}
-        </p>
-      </div>
-
       {/* ── Name ── */}
       <div className={styles.section}>
         <div className={styles.sectionTitle}>{form.pgKind} Name</div>

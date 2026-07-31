@@ -478,9 +478,12 @@ export default function SiteClient({ properties, dealers, areas, localities = []
     let l = properties.slice();
     if (tab === "sale") l = l.filter((p) => p.type === "sale");
     else if (tab === "rent") l = l.filter((p) => p.type === "rent");
-    // "PG" tab covers both PG and Hostel listings — the post-property wizard
-    // treats them as one "PG / Hostel" purpose with two sub-kinds.
-    else if (tab === "PG") l = l.filter((p) => p.ptype === "PG" || p.ptype === "Hostel");
+    // "PG" tab key is kept internally (search-param/URL compatibility) but
+    // is now Hostel-only — PG moved under Rent as its own ptype ("Room",
+    // with its own SEO pages at /near/[hub]/room, /kota/[slug]/room).
+    // Room listings are still findable via the Rent tab's generic filters,
+    // since Hostel/Room listings already have type: "rent".
+    else if (tab === "PG") l = l.filter((p) => p.ptype === "Hostel");
     // Commercial ("Shop") covers all commercial ptypes; Listing type below
     // narrows to rent vs sale within that set.
     else if (tab === "Shop") l = l.filter((p) => COMMERCIAL_PTYPES.includes(p.ptype));
@@ -1070,7 +1073,7 @@ export default function SiteClient({ properties, dealers, areas, localities = []
                 </button>
               ) : (
                 <button key={tb} className={tab === tb ? "on" : ""} onClick={() => setTab(tb)}>
-                  {tb === "sale" ? "Buy" : tb === "rent" ? "Rent" : tb === "Shop" ? "Commercial" : "Hostels / PG"}
+                  {tb === "sale" ? "Buy" : tb === "rent" ? "Rent" : tb === "Shop" ? "Commercial" : "Hostel"}
                 </button>
               )
             )}
